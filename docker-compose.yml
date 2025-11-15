@@ -1,0 +1,42 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    container_name: async-mqtt-test-broker
+    user: "1000:1000"
+    ports:
+      - "1883:1883"
+      - "1884:1884"
+      - "8883:8883"
+      - "8884:8884"
+      - "8885:8885"
+      - "8886:8886"
+      - "8887:8887"
+      - "9001:9001"
+    volumes:
+      - ./spec/fixture/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./spec/fixture/mosquitto:/mosquitto/sockets
+      - ./spec/fixture/ssl:/mosquitto/config/ssl:ro
+      - ./spec/fixture/mosquitto/passwd:/mosquitto/config/passwd
+    profiles:
+      - stable
+
+  mosquitto-testing:
+    image: registry.cedalo.com/eclipse-mosquitto-2.1-testing/mosquitto:latest
+    container_name: async-mqtt-test-broker-testing
+    user: "1000:1000"
+    ports:
+      - "1883:1883"
+      - "1884:1884"
+      - "8883:8883"
+      - "8884:8884"
+      - "8885:8885"
+      - "8886:8886"
+      - "8887:8887"
+      - "9001:9001"
+    volumes:
+      - ./spec/fixture/mosquitto/mosquitto-testing.conf:/mosquitto/config/mosquitto.conf
+      - ./spec/fixture/mosquitto:/mosquitto/sockets
+      - ./spec/fixture/ssl:/mosquitto/config/ssl:ro
+      - ./spec/fixture/mosquitto/passwd:/mosquitto/config/passwd
+    profiles:
+      - testing

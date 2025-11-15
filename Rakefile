@@ -1,0 +1,160 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'rake'
+require 'rake/clean'
+require 'fileutils'
+
+require 'bundler/audit/task'
+Bundler::Audit::Task.new
+
+require 'bundler/gem_helper'
+
+require 'rubocop/rake_task'
+RuboCop::RakeTask.new
+
+require 'yard'
+
+require 'rake/testtask'
+
+# Top-level test task for specs in spec/
+Rake::TestTask.new(:test) do |t|
+  t.libs << 'lib'
+  t.libs << 'spec'
+  t.test_files = FileList['spec/**/*_spec.rb'].exclude('spec/stashed/**/*')
+  t.warning = false
+end
+
+# YARD documentation for all gems
+CLOBBER.include('doc')
+
+desc 'Generate YARD documentation for all gems'
+YARD::Rake::YardocTask.new do |t|
+  t.options = ['--fail-on-warning']
+end
+
+desc 'Run YARD server for live documentation'
+task :yard_server do
+  sh 'bundle exec yard server --reload'
+end
+
+# Get all gem directories
+def gem_directories
+  Dir.glob('./gems/*').select { |f| File.directory?(f) }
+end
+
+namespace :gems do
+  gem_directories.each do |gem_dir|
+    gem_name = File.basename(gem_dir)
+
+    namespace gem_name.to_sym do
+      RuboCop::RakeTask.new do |task|
+        task.patterns = ["#{gem_dir}/lib/**/*.rb"]
+      end
+
+      Rake::TestTask.new(:test) do |t|
+        t.libs << "#{gem_dir}/lib"
+        t.libs << "#{gem_dir}/spec"
+        t.test_files = FileList["#{gem_dir}/spec/**/*_spec.rb"]
+        t.warning = false
+      end
+
+      Bundler::GemHelper.new(gem_dir).install
+
+      desc "Generate YARD documentation for #{gem_name}"
+      YARD::Rake::YardocTask.new(:yard) do |t|
+        t.files = ["#{gem_dir}/lib/**/*.rb"]
+        t.options = ['--no-private', '--markup', 'markdown']
+      end
+
+      task default: %i[rubocop test yard]
+    end
+
+    CLEAN.include("#{gem_dir}/pkg")
+  end
+
+  desc 'Build all gems'
+  task :build do
+    gem_directories.each do |gem_dir|
+      gem_name = File.basename(gem_dir)
+      Rake::Task["gems:#{gem_name}:build"].invoke
+    end
+  end
+
+  desc 'Release all gems'
+  task :release do
+    gem_directories.each do |gem_dir|
+      gem_name = File.basename(gem_dir)
+      Rake::Task["gems:#{gem_name}:release"].invoke
+    end
+  end
+end
+
+# Task to run all tests (top-level + all gems) with aggregate reporting
+desc 'Run all tests (top-level and all gems)'
+Rake::TestTask.new(:test_all) do |t|
+  t.libs << 'lib'
+  t.libs << 'spec'
+  gem_directories.each do |gem_dir|
+    t.libs << "#{gem_dir}/lib"
+    t.libs << "#{gem_dir}/spec"
+  end
+  t.test_files = FileList['spec/**/*_spec.rb'].exclude('spec/stashed/**/*') +
+                 gem_directories.flat_map { |gem_dir| FileList["#{gem_dir}/spec/**/*_spec.rb"] }
+  t.warning = false
+end
+
+# Broker management tasks
+namespace :broker do
+  desc 'Start mosquitto broker in Docker (stable profile)'
+  task :start do
+    profile = ENV['BROKER_PROFILE'] || 'stable'
+    sh "docker compose --profile #{profile} up -d"
+    puts 'Waiting for broker to be ready...'
+    sleep 2
+    puts "Mosquitto broker (#{profile}) started on localhost:1883"
+  end
+
+  desc 'Stop mosquitto broker'
+  task :stop do
+    sh 'docker compose --profile stable --profile testing down'
+    puts 'Mosquitto broker stopped'
+  end
+
+  desc 'Start stable mosquitto broker'
+  task :start_stable do
+    ENV['BROKER_PROFILE'] = 'stable'
+    Rake::Task['broker:start'].invoke
+  end
+
+  desc 'Start testing mosquitto broker'
+  task :start_testing do
+    ENV['BROKER_PROFILE'] = 'testing'
+    Rake::Task['broker:start'].invoke
+  end
+
+  desc 'Check if broker is running'
+  task :status do
+    system('docker compose ps mosquitto')
+  end
+
+  desc 'View broker logs'
+  task :logs do
+    sh 'docker compose logs -f mosquitto'
+  end
+end
+
+namespace :test do
+  desc 'Run tests with broker (starts broker, runs tests, stops broker)'
+  task :with_broker do
+    Rake::Task['broker:start'].invoke
+    Rake::Task[:test_all].invoke
+  ensure
+    Rake::Task['broker:stop'].invoke
+  end
+
+  desc 'Run tests assuming broker is already running'
+  task local: :test_all
+end
+
+task default: %i[rubocop yard test_all]

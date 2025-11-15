@@ -1,0 +1,8 @@
+--markup markdown
+--markup-provider redcarpet
+--no-private
+gems/*/lib/**/*.rb
+-
+README.md
+HOW_IT_WORKS.md
+LICENSE
