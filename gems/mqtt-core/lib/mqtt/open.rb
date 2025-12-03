@@ -7,6 +7,7 @@ require_relative 'options'
 module MQTT
   class << self
     include Options
+
     # Construct and Configure an MQTT client
     #
     # If a block is provided, yields the client and ensures disconnection.
@@ -174,7 +175,7 @@ module MQTT
 
         v = v[0]
         require async ? "mqtt/v#{v}/async/client" : "mqtt/v#{v}"
-        return Class.const_get("MQTT::V#{v}::#{async ? 'Async::' : ''}Client")
+        return Class.const_get("MQTT::V#{v}::#{'Async::' if async}Client")
       rescue LoadError => _e
         # warn e
       end

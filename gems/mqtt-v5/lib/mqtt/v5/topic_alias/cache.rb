@@ -67,6 +67,7 @@ module MQTT
         # @!visibility private
         # Explicitly Remove a topic (a previously aliased topic later explicitly set to use alias false)
         # @param topic [String]
+        # rubocop:disable Naming/PredicateMethod
         def remove(topic)
           alias_id = @aliases.delete(topic)
           return false unless alias_id
@@ -75,6 +76,7 @@ module MQTT
           @cached_bytes -= @aliases.delete(alias_id)&.bytesize || 0
           true
         end
+        # rubocop:enable Naming/PredicateMethod
 
         def topics
           @aliases.keys.select { |k| k.is_a?(String) }

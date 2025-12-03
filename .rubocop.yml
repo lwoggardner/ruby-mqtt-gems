@@ -1,8 +1,4 @@
 
-require:
-  - rubocop-rake
-  - rubocop-minitest
-
 AllCops:
   TargetRubyVersion: 3.4
   NewCops: enable
@@ -10,6 +6,10 @@ AllCops:
     - 'gems/*/spec/**/*.rb'
     - 'spec/**/*'
     - 'benchmark.rb'
+
+plugins:
+  - rubocop-rake
+  - rubocop-minitest
 
 Metrics/ModuleLength:
   Max: 130
