@@ -33,7 +33,8 @@ class GemHelper
                     when :tag
                       ref_name.start_with?('v') ? ref_name[1..] : ref_name
                     else
-                      "#{version}.pre.#{ref_name || 'unknown'}"
+                      suffix = ref_name&.empty? ? 'unknown' : (ref_name || 'unknown')
+                      "#{version}.pre.#{suffix}"
                     end
 
       [gem_version, ref_name, ref_type]
