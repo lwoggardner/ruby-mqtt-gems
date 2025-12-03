@@ -157,4 +157,67 @@ namespace :test do
   task local: :test_all
 end
 
+# For now ConcurrentMonitor version is aligned with MQTT version
+VERSION_FILES = %w[
+  gems/mqtt-core/lib/mqtt/version.rb
+  gems/concurrent_monitor/lib/concurrent_monitor/version.rb
+].freeze
+
+namespace :version do
+  desc 'Show current versions'
+  task :show do
+    require_relative 'gem_helper'
+
+    VERSION_FILES.each do |file|
+      version = GemHelper.read_version(file)
+      puts "#{file}: #{version}"
+    end
+
+    branch = GemHelper.current_branch
+    puts "\nBranch: #{branch}"
+  end
+
+  desc 'Create release tag (main branch only, verifies versions match)'
+  task :tag do
+    require_relative 'gem_helper'
+
+    version = GemHelper.verify_versions_match(*VERSION_FILES)
+    tag = GemHelper.create_tag(version: version, main_branch: 'main', prerelease: false)
+
+    puts "✓ Created release tag: #{tag}"
+    puts 'Push with: git push && git push --tags'
+  rescue StandardError => e
+    abort "Error: #{e.message}"
+  end
+
+  desc 'Create pre-release tag from current branch'
+  task :tag_prerelease do
+    require_relative 'gem_helper'
+
+    version = GemHelper.verify_versions_match(*VERSION_FILES)
+    tag = GemHelper.create_tag(version: version, main_branch: 'main', prerelease: true)
+
+    puts "✓ Created pre-release tag: #{tag}"
+    puts 'Push with: git push && git push --tags'
+  rescue StandardError => e
+    abort "Error: #{e.message}"
+  end
+
+  desc 'Bump minor version for both gems'
+  task :bump_minor do
+    VERSION_FILES.each do |file|
+      content = File.read(file)
+      content.sub!(/VERSION = ['"](\d+)\.(\d+)\.(\d+)['"]/) do
+        "VERSION = '#{Regexp.last_match(1)}.#{Regexp.last_match(2).to_i + 1}.0'"
+      end
+      File.write(file, content)
+
+      new_version = content.match(/VERSION = ['"](.+)['"]/)[1]
+      puts "Updated #{file} to #{new_version}"
+    end
+
+    puts "\nCommit with: git commit -am 'Bump version to <version>'"
+  end
+end
+
 task default: %i[rubocop yard test_all]

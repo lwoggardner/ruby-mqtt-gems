@@ -177,16 +177,16 @@ QOS 1/2 packet_identifiers, control flow and message retries are handled automat
 ### Subscriptions ###
 
 {MQTT::Core::Client#subscribe} takes arguments to construct the version-specific `SUBSCRIBE` packet, sends it to 
-the broker, waits for the `SUBACK` response, and returns a {MQTT::Core::Client::Subscription}.
+the broker, waits for the `SUBACK` response, and returns a {MQTT::Core::Client::EnumerableSubscription}.
 
 ```ruby
-sub = client.subscribe('topic1','topic2', 'prefix/#') # => #<MQTT::Client::Subscription
+sub = client.subscribe('topic1','topic2', 'prefix/#') # => #<MQTT::Client::EnumerableSubscription
 ```
 
 #### Subscription errors
 
 Default behaviour is to raise an exception if any topic filter in a `SUBSCRIBE` request
-is not fully accepted by the broker as indicated by the `SUBACK` response.
+is not fully accepted by the broker as indicated by the `.editorconfigSUBACK` response.
 
 {MQTT::Core::Client#subscribe} adds the options `:ignore_failed` and `:ignore_qos_limited` to control this 
 behaviour and {MQTT::Core::Client::Subscription#filter_status } can be used to interrogate the `SUBACK` response, eg for logging
@@ -201,8 +201,8 @@ sub.filter_status # => { success: ['prefix/#'], qos_limited: [], failed: [] }
 
 #### Processing Received Messages ####
 
-{MQTT::Core::Client::Subscription} includes `Enumerable` and so quacks like a ruby Array. The `#each` method iterates
-over `PUBLISH` messages as they arrive from the broker and until they are unsubscribed or disconnected. 
+{MQTT::Core::Client::EnumerableSubscription#ach} iterates over matching `PUBLISH` messages as they arrive from the
+broker and until it is unsubscribed or the client is disconnected.
 
 Messages are deconstructed into topic, payload, and a keyword Hash of the other packet attributes.
 

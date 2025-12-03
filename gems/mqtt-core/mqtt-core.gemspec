@@ -1,10 +1,11 @@
 # frozen_string_literal: true
 
-require_relative 'lib/mqtt/core/version'
+require_relative '../../gem_helper'
+require_relative 'lib/mqtt/version'
 
 Gem::Specification.new do |gem|
   gem.name        = 'mqtt-core'
-  gem.version     = MQTT::Core::VERSION
+  gem.version     = GemHelper.gem_version(version: MQTT::VERSION).first
   gem.authors     = ['Grant Gardner']
   gem.email       = ['grant@lastweekend.com.au']
   gem.summary     = 'Ruby MQTT Core'

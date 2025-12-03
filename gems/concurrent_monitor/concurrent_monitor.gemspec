@@ -1,10 +1,11 @@
 # frozen_string_literal: true
 
+require_relative '../../gem_helper'
 require_relative 'lib/concurrent_monitor/version'
 
 Gem::Specification.new do |gem|
   gem.name        = 'concurrent_monitor'
-  gem.version     = ConcurrentMonitor::VERSION
+  gem.version     = GemHelper.gem_version(version: ConcurrentMonitor::VERSION).first
   gem.authors     = ['Grant Gardner']
   gem.email       = ['grant@lastweekend.com.au']
   gem.summary     = 'An abstract concurrent monitor framework'

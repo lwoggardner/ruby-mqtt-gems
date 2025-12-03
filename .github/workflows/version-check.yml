@@ -1,0 +1,36 @@
+name: Version Check
+
+on:
+  pull_request:
+    paths:
+      - 'gems/*/lib/*/version.rb'
+      - 'gems/*/**.gemspec'
+
+jobs:
+  version-check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.4'
+    
+    - name: Check version bumps
+      run: |
+        for gem_dir in gems/*/; do
+          gem_name=$(basename "$gem_dir")
+          version_file="$gem_dir/lib/*/version.rb"
+          
+          if git diff --name-only origin/main...HEAD | grep -q "$version_file"; then
+            echo "✓ Version file changed for $gem_name"
+            
+            # Extract version from gemspec
+            cd "$gem_dir"
+            version=$(ruby -e "spec = eval(File.read('$gem_name.gemspec')); puts spec.version")
+            echo "New version: $version"
+            cd ../..
+          fi
+        done
