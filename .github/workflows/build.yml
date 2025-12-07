@@ -29,6 +29,9 @@ jobs:
         ruby-version: ${{ matrix.ruby }}
         bundler-cache: true
     
+    - name: Clean stale gems from cache
+      run: bundle clean
+    
     - name: Start mosquitto broker
       run: docker compose --profile ${{ github.event.inputs.broker_profile || 'stable' }} up -d
     
