@@ -34,3 +34,7 @@ jobs:
     
     - name: Run build (rubocop, docs, tests with broker)
       run: bundle exec rake
+    
+    - name: Show broker logs on failure
+      if: failure()
+      run: docker compose logs

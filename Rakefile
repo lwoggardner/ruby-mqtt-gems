@@ -111,8 +111,22 @@ namespace :broker do
     profile = ENV['BROKER_PROFILE'] || 'stable'
     sh "docker compose --profile #{profile} up -d"
     puts 'Waiting for broker to be ready...'
-    sleep 2
-    puts "Mosquitto broker (#{profile}) started on localhost:1883"
+
+    # Check docker container status
+    sh "docker compose --profile #{profile} ps"
+
+    # Wait up to 10 seconds for broker to be accessible
+    10.times do |i|
+      if system('nc -z localhost 1883 2>/dev/null')
+        puts "Mosquitto broker (#{profile}) started on localhost:1883"
+        break
+      end
+      sleep 1
+      if i == 9
+        sh "docker compose --profile #{profile} logs"
+        abort 'Broker failed to start after 10 seconds'
+      end
+    end
   end
 
   desc 'Stop mosquitto broker'
