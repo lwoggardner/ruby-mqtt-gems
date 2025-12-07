@@ -201,7 +201,7 @@ sub.filter_status # => { success: ['prefix/#'], qos_limited: [], failed: [] }
 
 #### Processing Received Messages ####
 
-{MQTT::Core::Client::EnumerableSubscription#ach} iterates over matching `PUBLISH` messages as they arrive from the
+{MQTT::Core::Client::EnumerableSubscription#each} iterates over matching `PUBLISH` messages as they arrive from the
 broker and until it is unsubscribed or the client is disconnected.
 
 Messages are deconstructed into topic, payload, and a keyword Hash of the other packet attributes.
