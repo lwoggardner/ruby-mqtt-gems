@@ -33,9 +33,7 @@ jobs:
       run: bundle clean
     
     - name: Generate mosquitto password file
-      run: |
-        docker run --rm -v $PWD/spec/fixture/mosquitto:/mosquitto/config eclipse-mosquitto:latest mosquitto_passwd -b -c /mosquitto/config/passwd ro readonly
-        chmod 644 spec/fixture/mosquitto/passwd
+      run: docker run --rm -v $PWD/spec/fixture/mosquitto:/mosquitto/config eclipse-mosquitto:latest mosquitto_passwd -b -c /mosquitto/config/passwd ro readonly
     
     - name: Run build (rubocop, docs, tests with broker)
       run: bundle exec rake
