@@ -33,10 +33,20 @@ jobs:
       run: bundle clean
     
     - name: Generate mosquitto password file
-      run: docker run --rm -v $PWD/spec/fixture/mosquitto:/mosquitto/config eclipse-mosquitto:latest mosquitto_passwd -b -c /mosquitto/config/passwd ro readonly
+      run: |
+        export MOSQUITTO_UID=$(id -u)
+        export MOSQUITTO_GID=$(id -g)
+        docker run --rm --user $MOSQUITTO_UID:$MOSQUITTO_GID -v $PWD/spec/fixture/mosquitto:/mosquitto/config eclipse-mosquitto:latest mosquitto_passwd -b -c /mosquitto/config/passwd ro readonly
+        ls -la spec/fixture/mosquitto/passwd
+      env:
+        MOSQUITTO_UID: ${{ env.MOSQUITTO_UID }}
+        MOSQUITTO_GID: ${{ env.MOSQUITTO_GID }}
     
     - name: Run build (rubocop, docs, tests with broker)
       run: bundle exec rake
+      env:
+        MOSQUITTO_UID: $(id -u)
+        MOSQUITTO_GID: $(id -g)
     
     - name: Show broker logs on failure
       if: failure()
