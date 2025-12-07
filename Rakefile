@@ -220,4 +220,4 @@ namespace :version do
   end
 end
 
-task default: %i[rubocop yard test_all]
+task default: %i[rubocop yard test:with_broker]

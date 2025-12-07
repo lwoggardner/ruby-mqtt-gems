@@ -32,15 +32,5 @@ jobs:
     - name: Clean stale gems from cache
       run: bundle clean
     
-    - name: Start mosquitto broker
-      run: docker compose --profile ${{ github.event.inputs.broker_profile || 'stable' }} up -d
-    
-    - name: Wait for broker
-      run: sleep 3
-    
-    - name: Run build (rubocop, docs, tests)
+    - name: Run build (rubocop, docs, tests with broker)
       run: bundle exec rake
-    
-    - name: Stop mosquitto broker
-      if: always()
-      run: docker compose --profile ${{ github.event.inputs.broker_profile || 'stable' }} down
