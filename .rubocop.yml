@@ -2,6 +2,7 @@
 AllCops:
   TargetRubyVersion: 3.4
   NewCops: enable
+  SuggestExtensions: false
   Exclude:
     - 'gems/*/spec/**/*.rb'
     - 'spec/**/*'
