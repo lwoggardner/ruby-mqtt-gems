@@ -21,6 +21,7 @@ group :development, :test do
   gem 'rubocop'
   gem 'rubocop-minitest'
   gem 'rubocop-rake'
+  gem 'rubocop-rspec'
   gem 'webrick'
   gem 'yard'
 end
