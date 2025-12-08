@@ -1,5 +1,5 @@
 name: Build
-on: 
+on:
   push:
   pull_request:
   workflow_dispatch:
@@ -25,23 +25,39 @@ jobs:
       MOSQUITTO_UID: 1001
       MOSQUITTO_GID: 1001
       TERM: color
-      BUNDLE_DEPLOYMENT: 'false'
     steps:
-    - uses: actions/checkout@v4
-    
-    - uses: ruby/setup-ruby@v1
-      with:
-        ruby-version: ${{ matrix.ruby }}
-        bundler-cache: true
-    
-    - name: Generate mosquitto password file
-      run: |
-        docker run --rm --user $MOSQUITTO_UID:$MOSQUITTO_GID -v $PWD/spec/fixture/mosquitto:/mosquitto/config eclipse-mosquitto:latest mosquitto_passwd -b -c /mosquitto/config/passwd ro readonly
-        ls -la spec/fixture/mosquitto/passwd
-    
-    - name: Run build (rubocop, docs, tests with broker)
-      run: bundle exec rake
-    
-    - name: Show broker logs on failure
-      if: failure()
-      run: docker compose logs
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: false
+
+      - name: Cache Ruby gems
+        uses: actions/cache@v4
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-gems-${{ matrix.ruby }}-${{ hashFiles('**/Gemfile.lock','**/*.gemspec') }}
+          restore-keys: |
+            ${{ runner.os }}-gems-${{ matrix.ruby }}-
+
+      - name: Ensure Bundler not in deployment/frozen mode and set install path
+        run: |
+          bundle config set --local deployment false
+          bundle config set --local frozen false
+          bundle config set --local path 'vendor/bundle'
+
+      - name: Install gems
+        run: bundle install --jobs 4 --retry 3
+
+      - name: Generate mosquitto password file
+        run: |
+          docker run --rm --user $MOSQUITTO_UID:$MOSQUITTO_GID -v $PWD/spec/fixture/mosquitto:/mosquitto/config eclipse-mosquitto:latest mosquitto_passwd -b -c /mosquitto/config/passwd ro readonly
+          ls -la spec/fixture/mosquitto/passwd
+
+      - name: Run build (rubocop, docs, tests with broker)
+        run: bundle exec rake
+
+      - name: Show broker logs on failure
+        if: failure()
+        run: docker compose logs
