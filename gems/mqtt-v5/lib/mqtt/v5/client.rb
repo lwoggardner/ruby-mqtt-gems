@@ -5,6 +5,8 @@ require_relative 'packets'
 require_relative 'client/authenticator'
 require_relative 'client/connection'
 require_relative 'client/session'
+require_relative 'client/request_response'
+require_relative 'client/json_rpc'
 
 module MQTT
   module V5

@@ -1,12 +1,12 @@
 PATH
   remote: gems
   specs:
-    concurrent_monitor (0.0.1.ci.release)
-    mqtt-core (0.0.1.ci.release)
+    concurrent_monitor (0.0.1.feature.request.response)
+    mqtt-core (0.0.1.feature.request.response)
       concurrent_monitor
-    mqtt-v3 (0.0.1.ci.release)
+    mqtt-v3 (0.0.1.feature.request.response)
       mqtt-core
-    mqtt-v5 (0.0.1.ci.release)
+    mqtt-v5 (0.0.1.feature.request.response)
       mqtt-core
 
 GEM
