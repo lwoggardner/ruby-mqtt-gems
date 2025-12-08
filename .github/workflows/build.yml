@@ -32,9 +32,8 @@ jobs:
       with:
         ruby-version: ${{ matrix.ruby }}
         bundler-cache: true
-    
-    - name: Unset deployment mode for path gems
-      run: bundle config unset deployment
+      env:
+        BUNDLE_DEPLOYMENT: 'false'
     
     - name: Generate mosquitto password file
       run: |
