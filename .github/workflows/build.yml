@@ -25,6 +25,7 @@ jobs:
       MOSQUITTO_UID: 1001
       MOSQUITTO_GID: 1001
       TERM: color
+      BUNDLE_DEPLOYMENT: 'false'
     steps:
     - uses: actions/checkout@v4
     
@@ -32,8 +33,6 @@ jobs:
       with:
         ruby-version: ${{ matrix.ruby }}
         bundler-cache: true
-      env:
-        BUNDLE_DEPLOYMENT: 'false'
     
     - name: Generate mosquitto password file
       run: |
