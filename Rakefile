@@ -216,7 +216,9 @@ namespace :version do
       puts "Updated #{file} to #{new_version}"
     end
 
-    puts "\nCommit with: git commit -am 'Bump version to <version>'"
+    puts "\nNext steps:"
+    puts '  bundle install  # Update Gemfile.lock'
+    puts "  git commit -am 'Bump version to <version>'"
   end
 end
 
