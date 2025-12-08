@@ -85,5 +85,15 @@ class GemHelper
       system("git tag -a #{tag} -m '#{message}'") || raise('Failed to create tag')
       tag
     end
+
+    def create_and_display_tag(version_files:, main_branch:, prerelease:)
+      version = verify_versions_match(*version_files)
+      tag = create_tag(version: version, main_branch: main_branch, prerelease: prerelease)
+
+      puts "✓ Created #{prerelease ? 'pre-release' : 'release'} tag: #{tag}"
+      puts 'Push with: git push && git push --tags'
+    rescue StandardError => e
+      abort "Error: #{e.message}"
+    end
   end
 end

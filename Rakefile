@@ -193,24 +193,14 @@ namespace :version do
 
   desc 'Create release tag (main branch only, verifies versions match)'
   task :tag do
-    create_version_tag(prerelease: false)
+    require_relative 'gem_helper'
+    GemHelper.create_and_display_tag(version_files: VERSION_FILES, main_branch: 'main', prerelease: false)
   end
 
   desc 'Create pre-release tag from current branch'
   task :tag_prerelease do
-    create_version_tag(prerelease: true)
-  end
-
-  def create_version_tag(prerelease:)
     require_relative 'gem_helper'
-
-    version = GemHelper.verify_versions_match(*VERSION_FILES)
-    tag = GemHelper.create_tag(version: version, main_branch: 'main', prerelease: prerelease)
-
-    puts "✓ Created #{prerelease ? 'pre-release' : 'release'} tag: #{tag}"
-    puts 'Push with: git push && git push --tags'
-  rescue StandardError => e
-    abort "Error: #{e.message}"
+    GemHelper.create_and_display_tag(version_files: VERSION_FILES, main_branch: 'main', prerelease: true)
   end
 
   desc 'Bump minor version for both gems'
