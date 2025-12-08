@@ -1,15 +1,15 @@
-name: Pre-release Check
+name: Gem Build Test
 
 on:
   workflow_dispatch:
     inputs:
       gems:
-        description: 'Gems to release (comma-separated, or "all")'
+        description: 'Gems to build and inspect (comma-separated, or "all")'
         required: true
         default: 'all'
 
 jobs:
-  pre-release:
+  build-test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
