@@ -24,6 +24,7 @@ jobs:
     env:
       MOSQUITTO_UID: 1001
       MOSQUITTO_GID: 1001
+      TERM: color
     steps:
     - uses: actions/checkout@v4
     
