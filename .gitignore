@@ -8,4 +8,5 @@ coverage
 doc
 spec/fixture/mosquitto/passwd
 spec/fixture/mosquitto/mqtt.sock
+vendor
 
