@@ -85,6 +85,7 @@ module MQTT
       def client_spec(*specs)
         this = self
         with_brokers do
+          parallelize_me!
           this.with_session_stores do
             this.with_client_classes do
               include(*specs)
