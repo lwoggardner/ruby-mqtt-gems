@@ -31,6 +31,8 @@ module MQTT
           { protocol: 3, async: true, class_name: 'MQTT::V3::Async::Client', skip: false }
         ].reject { |opts| opts[:skip] }
           .kw_each do |class_name:, protocol:, async:, **|
+          require "mqtt/v#{protocol}"
+          require "mqtt/v#{protocol}/async/client" if async
           describe class_name do
             let(:client_class) { Object.const_get(class_name) }
             let(:monitor_class) { Object.const_get("#{async ? 'Async' : 'Thread'}::Monitor") }
@@ -83,6 +85,7 @@ module MQTT
       def client_spec(*specs)
         this = self
         with_brokers do
+          parallelize_me!
           this.with_session_stores do
             this.with_client_classes do
               include(*specs)

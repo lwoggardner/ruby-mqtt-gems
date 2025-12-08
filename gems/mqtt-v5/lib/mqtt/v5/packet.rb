@@ -125,11 +125,13 @@ module MQTT
       module Definition
         def reason_code
           include ReasonCodeAck
+
           { type: :int8, default: 0x00 }
         end
 
         def reason_codes
           include ReasonCodeListAck
+
           list(:int8)
         end
       end

@@ -1,25 +1,63 @@
 name: Build
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      broker_profile:
+        description: 'Mosquitto broker profile'
+        required: false
+        default: 'testing'
+        type: choice
+        options:
+          - stable
+          - testing
+
 jobs:
   test:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        ruby: ['3.1', '3.2', '3.3', '3.4']
+        ruby: ['3.4']
     runs-on: ${{ matrix.os }}
-    services:
-      mosquitto:
-        image: eclipse-mosquitto:latest
-        ports:
-          - 1883:1883
-          - 9001:9001
-        volumes:
-          - ${{ github.workspace }}/spec/fixture/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    env:
+      MOSQUITTO_UID: 1001
+      MOSQUITTO_GID: 1001
+      TERM: color
     steps:
-    - uses: actions/checkout@v3
-    - uses: ruby/setup-ruby@v1
-      with:
-        ruby-version: ${{ matrix.ruby }}
-        bundler-cache: true # runs 'bundle install' and caches installed gems automatically
-    - run: bundle exec rake
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: false
+
+      - name: Cache Ruby gems
+        uses: actions/cache@v4
+        with:
+          path: vendor/bundle
+          key: ${{ runner.os }}-gems-${{ matrix.ruby }}-${{ hashFiles('**/Gemfile.lock','**/*.gemspec') }}
+          restore-keys: |
+            ${{ runner.os }}-gems-${{ matrix.ruby }}-
+
+      - name: Ensure Bundler not in deployment/frozen mode and set install path
+        run: |
+          bundle config set --local deployment false
+          bundle config set --local frozen false
+          bundle config set --local path 'vendor/bundle'
+
+      - name: Install gems
+        run: bundle install --jobs 4 --retry 3
+
+      - name: Generate mosquitto password file
+        run: |
+          docker run --rm --user $MOSQUITTO_UID:$MOSQUITTO_GID -v $PWD/spec/fixture/mosquitto:/mosquitto/config eclipse-mosquitto:latest mosquitto_passwd -b -c /mosquitto/config/passwd ro readonly
+          ls -la spec/fixture/mosquitto/passwd
+
+      - name: Run build (rubocop, docs, tests with broker)
+        run: bundle exec rake
+
+      - name: Show broker logs on failure
+        if: failure()
+        run: docker compose logs

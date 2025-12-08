@@ -111,8 +111,22 @@ namespace :broker do
     profile = ENV['BROKER_PROFILE'] || 'stable'
     sh "docker compose --profile #{profile} up -d"
     puts 'Waiting for broker to be ready...'
-    sleep 2
-    puts "Mosquitto broker (#{profile}) started on localhost:1883"
+
+    # Check docker container status
+    sh "docker compose --profile #{profile} ps"
+
+    # Wait up to 10 seconds for broker to be accessible
+    10.times do |i|
+      if system('nc -z localhost 1883 2>/dev/null')
+        puts "Mosquitto broker (#{profile}) started on localhost:1883"
+        break
+      end
+      sleep 1
+      if i == 9
+        sh "docker compose --profile #{profile} logs"
+        abort 'Broker failed to start after 10 seconds'
+      end
+    end
   end
 
   desc 'Stop mosquitto broker'
@@ -157,4 +171,55 @@ namespace :test do
   task local: :test_all
 end
 
-task default: %i[rubocop yard test_all]
+# For now ConcurrentMonitor version is aligned with MQTT version
+VERSION_FILES = %w[
+  gems/mqtt-core/lib/mqtt/version.rb
+  gems/concurrent_monitor/lib/concurrent_monitor/version.rb
+].freeze
+
+namespace :version do
+  desc 'Show current versions'
+  task :show do
+    require_relative 'gem_helper'
+
+    VERSION_FILES.each do |file|
+      version = GemHelper.read_version(file)
+      puts "#{file}: #{version}"
+    end
+
+    branch = GemHelper.current_branch
+    puts "\nBranch: #{branch}"
+  end
+
+  desc 'Create release tag (main branch only, verifies versions match)'
+  task :tag do
+    require_relative 'gem_helper'
+    GemHelper.create_and_display_tag(version_files: VERSION_FILES, main_branch: 'main', prerelease: false)
+  end
+
+  desc 'Create pre-release tag from current branch'
+  task :tag_prerelease do
+    require_relative 'gem_helper'
+    GemHelper.create_and_display_tag(version_files: VERSION_FILES, main_branch: 'main', prerelease: true)
+  end
+
+  desc 'Bump minor version for both gems'
+  task :bump_minor do
+    VERSION_FILES.each do |file|
+      content = File.read(file)
+      content.sub!(/VERSION = ['"](\d+)\.(\d+)\.(\d+)['"]/) do
+        "VERSION = '#{Regexp.last_match(1)}.#{Regexp.last_match(2).to_i + 1}.0'"
+      end
+      File.write(file, content)
+
+      new_version = content.match(/VERSION = ['"](.+)['"]/)[1]
+      puts "Updated #{file} to #{new_version}"
+    end
+
+    puts "\nNext steps:"
+    puts '  bundle install  # Update Gemfile.lock'
+    puts "  git commit -am 'Bump version to <version>'"
+  end
+end
+
+task default: %i[rubocop yard test:with_broker]

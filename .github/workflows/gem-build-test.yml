@@ -1,0 +1,44 @@
+name: Gem Build Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      gems:
+        description: 'Gems to build and inspect (comma-separated, or "all")'
+        required: true
+        default: 'all'
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.4'
+        bundler-cache: true
+    
+    - name: Run tests
+      run: bundle exec rake
+    
+    - name: Build gems
+      run: |
+        gems="${{ github.event.inputs.gems }}"
+        if [ "$gems" = "all" ]; then
+          bundle exec rake gems:build
+        else
+          IFS=',' read -ra GEM_ARRAY <<< "$gems"
+          for gem in "${GEM_ARRAY[@]}"; do
+            gem=$(echo "$gem" | xargs) # trim whitespace
+            bundle exec rake "gems:$gem:build"
+          done
+        fi
+    
+    - name: Check gem contents
+      run: |
+        for gem_file in gems/*/pkg/*.gem; do
+          echo "=== Contents of $(basename "$gem_file") ==="
+          gem contents "$gem_file"
+          echo
+        done

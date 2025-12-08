@@ -6,7 +6,7 @@
 *.gem
 coverage
 doc
-Gemfile.lock
 spec/fixture/mosquitto/passwd
 spec/fixture/mosquitto/mqtt.sock
+vendor
 

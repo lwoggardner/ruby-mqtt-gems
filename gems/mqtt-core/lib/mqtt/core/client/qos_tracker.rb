@@ -35,10 +35,12 @@ module MQTT
         end
 
         # Release the pending qos2 packet (return true if we had previously seen it)
+        # rubocop:disable Naming/PredicateMethod
         def qos2_release(id)
           session_store.qos2_release(id)
           !!@qos2_pending.delete?(id)
         end
+        # rubocop:enable Naming/PredicateMethod
 
         # Called when a new subscription arrives.
         # @return [Array<PUBLISH>] a list of matching packets to enqueue on the subscription.

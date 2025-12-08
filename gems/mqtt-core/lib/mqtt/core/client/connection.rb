@@ -181,10 +181,12 @@ module MQTT
           io.close
         end
 
+        # rubocop:disable Naming/PredicateMethod
         def handle_eof
           client.receive_eof
           false
         end
+        # rubocop:enable Naming/PredicateMethod
       end
     end
   end

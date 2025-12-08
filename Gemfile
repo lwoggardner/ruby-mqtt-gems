@@ -9,7 +9,7 @@ path 'gems' do
   gem 'mqtt-v5'
 end
 
-group :development, :test, optional: true do
+group :development, :test do
   gem 'async'
   gem 'bundler-audit'
   gem 'kramdown'

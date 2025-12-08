@@ -2,7 +2,7 @@ services:
   mosquitto:
     image: eclipse-mosquitto:latest
     container_name: async-mqtt-test-broker
-    user: "1000:1000"
+    user: "${MOSQUITTO_UID:-1000}:${MOSQUITTO_GID:-1000}"
     ports:
       - "1883:1883"
       - "1884:1884"
@@ -23,7 +23,7 @@ services:
   mosquitto-testing:
     image: registry.cedalo.com/eclipse-mosquitto-2.1-testing/mosquitto:latest
     container_name: async-mqtt-test-broker-testing
-    user: "1000:1000"
+    user: "${MOSQUITTO_UID:-1000}:${MOSQUITTO_GID:-1000}"
     ports:
       - "1883:1883"
       - "1884:1884"

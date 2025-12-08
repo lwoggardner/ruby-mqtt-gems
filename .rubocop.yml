@@ -1,15 +1,17 @@
 
-require:
-  - rubocop-rake
-  - rubocop-minitest
-
 AllCops:
   TargetRubyVersion: 3.4
   NewCops: enable
+  SuggestExtensions: false
   Exclude:
     - 'gems/*/spec/**/*.rb'
     - 'spec/**/*'
     - 'benchmark.rb'
+    - 'vendor/**/*'
+
+plugins:
+  - rubocop-rake
+  - rubocop-minitest
 
 Metrics/ModuleLength:
   Max: 130

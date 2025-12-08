@@ -8,12 +8,14 @@ module MQTT
       module BooleanByte
         module_function
 
+        # rubocop:disable Naming/PredicateMethod
         def read(io)
           int_value = Int8.read(io)
           raise ProtocolError, 'Value must be 0 or 1' unless int_value.between?(0, 1)
 
           !int_value.zero?
         end
+        # rubocop:enable Naming/PredicateMethod
 
         def write(value, io)
           value = 1 if value.nil?
@@ -35,9 +37,11 @@ module MQTT
           !!value
         end
 
+        # rubocop:disable Naming/PredicateMethod
         def default_value
           false
         end
+        # rubocop:enable Naming/PredicateMethod
       end
     end
   end
