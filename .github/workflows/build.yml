@@ -32,6 +32,7 @@ jobs:
       with:
         ruby-version: ${{ matrix.ruby }}
         bundler-cache: true
+        bundler-deployment: false
     
     - name: Clean stale gems from cache
       run: bundle clean
