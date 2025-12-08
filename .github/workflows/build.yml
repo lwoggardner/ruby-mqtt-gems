@@ -32,10 +32,9 @@ jobs:
       with:
         ruby-version: ${{ matrix.ruby }}
         bundler-cache: true
-        bundler-deployment: false
     
-    - name: Clean stale gems from cache
-      run: bundle clean
+    - name: Unset deployment mode for path gems
+      run: bundle config unset deployment
     
     - name: Generate mosquitto password file
       run: |
