@@ -30,6 +30,11 @@ module MQTT
         end
 
         # @!visibility private
+        def defaults
+          super.merge!(qos: 0)
+        end
+
+        # @!visibility private
         def validate
           raise ArgumentError, 'QoS must be 0, 1, or 2' unless (0..2).include?(qos)
           raise ArgumentError, 'Topic name cannot be empty' if !topic_alias && topic_name.to_s.empty?
