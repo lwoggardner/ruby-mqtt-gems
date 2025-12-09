@@ -11,13 +11,14 @@ module MQTT
             it 'concurrent requests' do
               with_client do |responder_client|
                 responder_client.connect
-                responder_client.responder('test/service') do |payload|
+                topic = "test/service/#{responder_client.client_id}"
+                responder_client.responder(topic) do |payload|
                   "response: #{payload}"
                 end
                 
                 with_client(session_store: responder_client.class.memory_store) do |requester_client|
                   requester_client.connect
-                  req = requester_client.requester('test/service')
+                  req = requester_client.requester(topic)
                   
                   tasks = 3.times.map do |i|
                     requester_client.async do
@@ -37,7 +38,8 @@ module MQTT
             it 'timeout on no response' do
               with_client do |client|
                 client.connect
-                req = client.requester('test/noservice')
+                topic = "test/noservice/#{client.client_id}"
+                req = client.requester(topic)
                 
                 _(proc { req.request(payload: 'hello', timeout: 0.5) }).must_raise(RuntimeError)
               end

@@ -11,13 +11,14 @@ module MQTT
             it 'basic JSON-RPC call' do
               with_client do |responder_client|
                 responder_client.connect
-                responder_client.json_rpc_responder('test/api') do |method, params|
+                topic = "test/api/#{responder_client.client_id}"
+                responder_client.json_rpc_responder(topic) do |method, params|
                   { method: method, params: params }
                 end
                 
                 with_client(session_store: responder_client.class.memory_store) do |requester_client|
                   requester_client.connect
-                  rpc = requester_client.json_rpc_requester('test/api')
+                  rpc = requester_client.json_rpc_requester(topic)
                   result = rpc.call('test_method', foo: 'bar', timeout: 2)
                   
                   _(result[:method]).must_equal('test_method')
@@ -29,13 +30,14 @@ module MQTT
             it 'method_missing for natural Ruby calls' do
               with_client do |responder_client|
                 responder_client.connect
-                responder_client.json_rpc_responder('test/api') do |method, params|
+                topic = "test/api/#{responder_client.client_id}"
+                responder_client.json_rpc_responder(topic) do |method, params|
                   { success: true, called: method }
                 end
                 
                 with_client(session_store: responder_client.class.memory_store) do |requester_client|
                   requester_client.connect
-                  rpc = requester_client.json_rpc_requester('test/api')
+                  rpc = requester_client.json_rpc_requester(topic)
                   result = rpc.restart(device_id: '123')
                   
                   _(result[:success]).must_equal(true)
@@ -47,13 +49,14 @@ module MQTT
             it 'JSON-RPC error handling' do
               with_client do |responder_client|
                 responder_client.connect
-                responder_client.json_rpc_responder('test/api') do |method, params|
+                topic = "test/api/#{responder_client.client_id}"
+                responder_client.json_rpc_responder(topic) do |method, params|
                   raise 'Something went wrong'
                 end
                 
                 with_client(session_store: responder_client.class.memory_store) do |requester_client|
                   requester_client.connect
-                  rpc = requester_client.json_rpc_requester('test/api')
+                  rpc = requester_client.json_rpc_requester(topic)
                   
                   err = _(proc { rpc.call('failing_method', timeout: 2) }).must_raise(JsonRpcError)
                   _(err.code).must_equal(-32603)
@@ -65,17 +68,18 @@ module MQTT
             it 'object dispatch' do
               with_client do |responder_client|
                 responder_client.connect
+                topic = "test/api/#{responder_client.client_id}"
                 
                 service = Object.new
                 def service.restart(device_id:)
                   { restarted: device_id }
                 end
                 
-                responder_client.json_rpc_responder('test/api', service)
+                responder_client.json_rpc_responder(topic, service)
                 
                 with_client(session_store: responder_client.class.memory_store) do |requester_client|
                   requester_client.connect
-                  rpc = requester_client.json_rpc_requester('test/api')
+                  rpc = requester_client.json_rpc_requester(topic)
                   result = rpc.restart(device_id: 'device-1')
                   
                   _(result[:restarted]).must_equal('device-1')
