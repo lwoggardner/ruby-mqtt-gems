@@ -544,7 +544,7 @@ module MQTT
         disconnected!(retry_count += 1) { raise e }
         # If we are going to restart with a clean session existing acks and subs need to be cancelled.
         retry unless synchronize do
-          @stopping.tap { |stopping| cancel_session('Restarting session') if !stopping && session.clean? }
+          @stopping.tap { |stopping| cancel_session('Restarting session', e) if !stopping && session.clean? }
         end
       ensure
         stop!(e)
@@ -672,17 +672,18 @@ module MQTT
 
           @exception = exception
           @status = :stopped
-          cancel_session('Connection stopped')
+          cancel_session('Connection stopped', exception)
           conn_cond.broadcast
           @run&.stop unless @run&.current?
         end
       end
 
       # called before retrying with a clean session or while stopping?
-      def cancel_session(msg)
-        cause = ConnectionError.new(msg)
-        cancel_acks(cause)
-        cancel_subs(cause)
+      def cancel_session(msg, cause = nil)
+        conn_error = ConnectionError.new(msg)
+        cancel_acks(conn_error)
+        # Send nil on clean disconnect, ConnectionError on error disconnect
+        cancel_subs(cause ? conn_error : nil)
       end
 
       def cancel_subs(cause)
