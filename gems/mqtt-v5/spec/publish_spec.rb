@@ -142,4 +142,24 @@ describe 'MQTT::V5::Packet::Publish' do
       _(deserialized.response_topic).must_equal 'resp'
     end
   end
+
+  describe 'subscription_identifiers' do
+    it 'serializes and deserializes multiple subscription_identifiers' do
+      # Server/proxy can send multiple subscription_identifiers when message matches multiple subscriptions
+      packet = packet_class.new(
+        topic_name: 'test/topic',
+        qos: 0,
+        subscription_identifiers: [1, 5, 10],
+        payload: 'test payload'
+      )
+      
+      io = StringIO.new
+      packet.serialize(io)
+      io.rewind
+      
+      deserialized = MQTT::V5::Packet.deserialize(io)
+      _(deserialized.subscription_identifiers).must_equal [1, 5, 10]
+      _(deserialized.payload).must_equal 'test payload'
+    end
+  end
 end
