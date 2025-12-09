@@ -70,7 +70,7 @@ module MQTT
         # @return [Object] the block result when block given
         # @return [nil] when unsubscribed or disconnected
         def get(&)
-          get_packet { |pkt| pkt.deconstruct_message(&) }
+          get_packet { |pkt| pkt&.deconstruct_message(&) }
         end
         alias get_message get
 
