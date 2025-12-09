@@ -8,6 +8,8 @@ module MQTT
     class Client < MQTT::Core::Client
       # Client Session specialisation for MQTT 5.0
       class Session < MQTT::Core::Client::Session
+        attr_reader :response_base
+
         # If client id was set non-empty, then this is just used
         # If not set, or explicitly empty or explicitly nil, then use server-assigned client id
         def connect_data(**connect)
@@ -30,6 +32,7 @@ module MQTT
         def connected!(connect, connack)
           session_store.client_id = connack.assigned_client_identifier if connack.assigned_client_identifier
           session_store.expiry_interval = connack.session_expiry_interval if connack.session_expiry_interval
+          @response_base = connack.response_information if connack.response_information
           super
         end
 

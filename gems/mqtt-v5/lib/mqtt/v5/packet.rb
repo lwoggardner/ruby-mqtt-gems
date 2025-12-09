@@ -41,7 +41,7 @@ module MQTT
         #   @return [Integer] (publish)
         #   @return [Array<Integer>] (subscribe)
         [0x0B, :subscription_identifier, :varint, %i[subscribe]],
-        [0x08, :subscription_identifiers, [:varint], %i[publish]], # this is only sent by servers
+        [0x0B, :subscription_identifiers, [:varint], %i[publish]], # this is only sent by servers
         [0x11, :session_expiry_interval, :int32, %i[connect connack disconnect]],
         [0x12, :assigned_client_identifier, :utf8string, [:connack]],
         [0x13, :server_keep_alive, :int16, [:connack]],

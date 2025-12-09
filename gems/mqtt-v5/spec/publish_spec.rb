@@ -22,6 +22,25 @@ describe 'MQTT::V5::Packet::Publish' do
     _(s).must_equal('30 31 00 07 72 65 71 75 65 73 74 10 02 00 00 01 2c 08 00 08 72 65 73 70 6f 6e 73 65 54 68 69 73 20 69 73 20 61 20 51 6f 53 20 30 20 6d 65 73 73 61 67 65'.b)
   end
 
+  it 'serialises PUBLISH with correlation_data' do
+    data = {
+      qos: 0,
+      topic_name: 'test/topic',
+      correlation_data: 'my-correlation-id',
+      payload: 'test payload'
+    }
+    packet = packet_class.new(**data)
+    _(packet.correlation_data).must_equal('my-correlation-id')
+    
+    io = StringIO.new
+    packet.serialize(io)
+    io.rewind
+    
+    deserialized = MQTT::V5::Packet.deserialize(io)
+    _(deserialized.correlation_data).must_equal('my-correlation-id')
+    _(deserialized.payload).must_equal('test payload')
+  end
+
   describe 'MQTT 5.0 Compliance' do
     it 'MQTT-2.2.1-2: QoS 0 PUBLISH MUST NOT contain Packet Identifier' do
       packet = packet_class.new(topic_name: 'test', qos: 0)
@@ -109,6 +128,18 @@ describe 'MQTT::V5::Packet::Publish' do
       packet.apply_alias(alias: 5)
       
       _(packet.topic_alias).must_equal 5
+    end
+  end
+
+  describe 'response_topic serialization' do
+    it 'serializes and deserializes response_topic property' do
+      packet = packet_class.new(topic_name: 'test', qos: 0, response_topic: 'resp', payload: 'test')
+      io = StringIO.new
+      packet.serialize(io)
+      
+      io.rewind
+      deserialized = MQTT::V5::Packet.deserialize(io)
+      _(deserialized.response_topic).must_equal 'resp'
     end
   end
 end

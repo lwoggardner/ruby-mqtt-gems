@@ -8,15 +8,18 @@ module MQTT
       # Requester handles making requests and receiving responses
       # Setup once (typically in on_birth) and reuse for multiple requests
       class Requester
-        def initialize(client, request_topic)
+        def initialize(client, request_topic, response_base)
           @client = client
           @request_topic = request_topic
+          @response_base = response_base
           @pending = {}
           
-          # Subscribe immediately to response topic
-          base = "#{@client.session.response_base}/#{@request_topic}/#"
-          @subscription = @client.subscribe(base).async do |topic, payload, correlation_data:, **attrs|
-            @pending[correlation_data]&.complete(payload)
+          # Subscribe immediately to response topic and start async handler
+          base = "#{@response_base}/#{@request_topic}/#"
+          sub = @client.subscribe(base)
+          @task = sub.async_packets do |packet|
+            correlation_data = packet.correlation_data
+            @pending[correlation_data]&.fulfill(packet.payload) if correlation_data
           end
         end
         
@@ -25,11 +28,11 @@ module MQTT
         # @param timeout [Numeric] timeout in seconds
         # @param qos [Integer] QoS level (0, 1, or 2)
         # @return [String] the response payload
-        def request(payload:, timeout: 5, qos: 1)
+        def request(payload:, timeout: 5, qos: 0)
           correlation_data = SecureRandom.uuid
-          response_topic = "#{@client.session.response_base}/#{@request_topic}/#{correlation_data}"
+          response_topic = "#{@response_base}/#{@request_topic}/#{correlation_data}"
           
-          future = ConcurrentMonitor::Future.new
+          future = @client.new_future
           @pending[correlation_data] = future
           
           @client.publish(@request_topic, payload,
@@ -38,7 +41,8 @@ module MQTT
             correlation_data: correlation_data
           )
           
-          future.value(timeout: timeout)
+          future.wait(timeout, exception: ::RuntimeError)
+          future.value
         ensure
           @pending.delete(correlation_data)
         end
@@ -48,7 +52,8 @@ module MQTT
       # @param topic [String] the request topic
       # @return [Requester]
       def requester(topic)
-        Requester.new(self, topic)
+        response_base = session.response_base || "response"
+        Requester.new(self, topic, response_base)
       end
       
       # Setup a responder for the given topic
@@ -56,15 +61,19 @@ module MQTT
       # @param qos [Integer] QoS level for subscription
       # @yield [payload] block that processes request and returns response
       # @return [Subscription] the subscription handling requests
-      def responder(topic, qos: 1, &block)
-        subscribe(topic, max_qos: qos).async do |req_topic, payload, response_topic:, correlation_data:, **attrs|
-          response_payload = block.call(payload)
+      def responder(topic, qos: 0, &block)
+        sub = subscribe(topic, max_qos: qos)
+        task = sub.async_packets do |packet|
+          next unless packet.response_topic
           
-          publish(response_topic, response_payload,
+          response_payload = block.call(packet.payload)
+          
+          publish(packet.response_topic, response_payload,
             qos: qos,
-            correlation_data: correlation_data
+            correlation_data: packet.correlation_data
           )
         end
+        [sub, task]
       end
     end
   end
