@@ -1,99 +1,111 @@
 # frozen_string_literal: true
 
 require 'json'
-require 'securerandom'
-require 'mqtt/v5/client/request_response'
 
 module MQTT
   module V5
-    class Client
-      # JSON-RPC 2.0 Requester
-      class JsonRpcRequester
-        def initialize(requester)
-          @requester = requester
-        end
+    class JsonRpcError < StandardError
+      attr_reader :code, :data
+
+      def initialize(message, code: -32603, data: nil)
+        super(message)
+        @code = code
+        @data = data
+      end
+    end
+
+    # JSON-RPC requester wraps request/response with JSON-RPC protocol
+    class JsonRpcRequester
+      def initialize(requester)
+        @requester = requester
+        @id = 0
+      end
+
+      def call(method, **params)
+        @id += 1
+        timeout = params.delete(:timeout) || 5
         
-        # Make a JSON-RPC call
-        # @param method [String] the method name
-        # @param params [Hash] the method parameters
-        # @param timeout [Numeric] timeout in seconds
-        # @return [Object] the result from the JSON-RPC response
-        # @raise [JsonRpcError] if the response contains an error
-        def call(method, params = {}, timeout: 5)
-          request = {
-            jsonrpc: '2.0',
-            method: method,
-            params: params,
-            id: SecureRandom.uuid
-          }
-          
-          response_json = @requester.request(
-            payload: JSON.generate(request),
-            timeout: timeout
+        request = {
+          jsonrpc: '2.0',
+          method: method,
+          params: params,
+          id: @id
+        }
+
+        response_json = @requester.request(payload: JSON.generate(request), timeout: timeout)
+        response = JSON.parse(response_json, symbolize_names: true)
+
+        if response[:error]
+          raise JsonRpcError.new(
+            response[:error][:message],
+            code: response[:error][:code],
+            data: response[:error][:data]
           )
-          
-          response = JSON.parse(response_json, symbolize_names: true)
-          raise JsonRpcError.new(response[:error]) if response[:error]
-          response[:result]
         end
-        
-        # Allow natural Ruby method calls via method_missing
-        def method_missing(method, **kwargs)
-          call(method.to_s, kwargs)
-        end
-        
-        def respond_to_missing?(method, include_private = false)
-          true
-        end
+
+        response[:result]
       end
-      
-      # JSON-RPC 2.0 Error
-      class JsonRpcError < StandardError
-        attr_reader :code, :data
-        
-        def initialize(error)
-          @code = error[:code]
-          @data = error[:data]
-          super(error[:message])
-        end
+
+      def method_missing(method, **params)
+        call(method.to_s, **params)
       end
-      
-      # Create a JSON-RPC requester for the given topic
-      # @param topic [String] the request topic
-      # @return [JsonRpcRequester]
-      def json_rpc_requester(topic)
-        JsonRpcRequester.new(requester(topic))
+
+      def respond_to_missing?(method, include_private = false)
+        true
       end
-      
-      # Setup a JSON-RPC responder for the given topic
-      # @param topic [String] the request topic to subscribe to
-      # @param handler [Object] optional object to dispatch methods to
-      # @param qos [Integer] QoS level for subscription
-      # @yield [method, params] block that handles the method call
-      # @return [Subscription] the subscription handling requests
-      def json_rpc_responder(topic, handler = nil, qos: 1, &block)
-        responder(topic, qos: qos) do |payload|
-          req = JSON.parse(payload, symbolize_names: true)
+    end
+
+    # JSON-RPC responder wraps responder with JSON-RPC protocol
+    class JsonRpcResponder
+      def initialize(client, topic, handler)
+        @client = client
+        @topic = topic
+        @handler = handler
+      end
+
+      def start
+        @client.responder(@topic) do |payload|
+          request = JSON.parse(payload, symbolize_names: true)
           
           begin
-            # Dispatch to object or block
-            result = if handler
-              handler.public_send(req[:method], **req[:params].transform_keys(&:to_sym))
+            result = if @handler.respond_to?(:call)
+              @handler.call(request[:method], request[:params] || {})
             else
-              block.call(req[:method], req[:params] || {})
+              method = request[:method].to_sym
+              @handler.public_send(method, **(request[:params] || {}))
             end
-            
-            response = { jsonrpc: '2.0', result: result, id: req[:id] }
+
+            response = {
+              jsonrpc: '2.0',
+              result: result,
+              id: request[:id]
+            }
           rescue => e
             response = {
               jsonrpc: '2.0',
-              error: { code: -32603, message: e.message },
-              id: req[:id]
+              error: {
+                code: -32603,
+                message: e.message
+              },
+              id: request[:id]
             }
           end
-          
+
           JSON.generate(response)
         end
+      end
+    end
+
+    class Client
+      def json_rpc_requester(topic)
+        req = requester(topic)
+        JsonRpcRequester.new(req)
+      end
+
+      def json_rpc_responder(topic, handler = nil, &block)
+        handler ||= block
+        responder = JsonRpcResponder.new(self, topic, handler)
+        responder.start
       end
     end
   end

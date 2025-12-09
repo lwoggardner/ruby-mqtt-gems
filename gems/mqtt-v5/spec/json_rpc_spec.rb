@@ -9,8 +9,6 @@ module MQTT
         base.class_eval do
           describe 'JSON-RPC' do
             it 'basic JSON-RPC call' do
-              skip 'JSON-RPC implementation - to be implemented'
-              
               with_client do |responder_client|
                 responder_client.connect
                 responder_client.json_rpc_responder('test/api') do |method, params|
@@ -29,8 +27,6 @@ module MQTT
             end
 
             it 'method_missing for natural Ruby calls' do
-              skip 'JSON-RPC implementation - to be implemented'
-              
               with_client do |responder_client|
                 responder_client.connect
                 responder_client.json_rpc_responder('test/api') do |method, params|
@@ -49,8 +45,6 @@ module MQTT
             end
 
             it 'JSON-RPC error handling' do
-              skip 'JSON-RPC implementation - to be implemented'
-              
               with_client do |responder_client|
                 responder_client.connect
                 responder_client.json_rpc_responder('test/api') do |method, params|
@@ -69,8 +63,6 @@ module MQTT
             end
 
             it 'object dispatch' do
-              skip 'JSON-RPC implementation - to be implemented'
-              
               with_client do |responder_client|
                 responder_client.connect
                 
