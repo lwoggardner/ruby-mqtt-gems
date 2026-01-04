@@ -83,7 +83,7 @@ module ConcurrentMonitor
   # @param [Numeric|TimeoutClock] timeout
   # @param [Class|StandardError|nil] exception if set the error to raise on timeout
   # @return [Object] task result, nil if timed out without exception
-  def with_timeout(timeout, exception: nil, condition: new_condition, &block)
+  def with_timeout(timeout_arg, timeout: timeout_arg, exception: nil, condition: new_condition, &block)
     done = false
     task = async do |t|
       block.call(t)
@@ -95,7 +95,7 @@ module ConcurrentMonitor
     end
 
     begin
-      synchronize { condition.wait_until(timeout, exception:) { done } }
+      synchronize { condition.wait_until(timeout:, exception:) { done } }
     ensure
       task.stop
     end
@@ -121,6 +121,10 @@ module ConcurrentMonitor
 
   def new_future(monitor: self)
     Future.new(monitor:)
+  end
+
+  def new_semaphore(limit:, monitor: self)
+    Semaphore.new(monitor:, limit:)
   end
 
   # @!attribute [rw] monitor

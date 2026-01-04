@@ -1,111 +1,63 @@
 # frozen_string_literal: true
 
-require 'json'
+require 'json_rpc_kit'
+require_relative 'request_response'
 
 module MQTT
   module V5
-    class JsonRpcError < StandardError
-      attr_reader :code, :data
+    class Client < MQTT::Core::Client
+      # JSON-RPC over MQTT v5 Request/Response
+      module JsonRpc
+        # Create JSON-RPC Client endpoint over MQTT Request Response
+        # @param topic [String]
+        # @param request_context [RequestResponse::Context]
+        # @param namespace [String] optional namespace prefix used to convert ruby method names to JSON-RPC convention
+        # @param defaults [Hash] default publish options for JSON-RPC requests (eg qos:, user_properties:)
+        # @return [JsonRpcKit::Endpoint] a client for invoking JSON-RPC methods
+        def json_rpc_endpoint(topic, request_context: default_request_context, namespace: nil, **defaults)
+          JsonRpcKit.endpoint(namespace:) do |id, request_json, async: false, timeout: nil, **pub_opts, &response|
+            request_opts = { **defaults, **pub_opts, content_type: 'application/json' }
+            next request_context.notify(topic, request_json, **request_opts) unless id
 
-      def initialize(message, code: -32603, data: nil)
-        super(message)
-        @code = code
-        @data = data
-      end
-    end
-
-    # JSON-RPC requester wraps request/response with JSON-RPC protocol
-    class JsonRpcRequester
-      def initialize(requester)
-        @requester = requester
-        @id = 0
-      end
-
-      def call(method, **params)
-        @id += 1
-        timeout = params.delete(:timeout) || 5
-        
-        request = {
-          jsonrpc: '2.0',
-          method: method,
-          params: params,
-          id: @id
-        }
-
-        response_json = @requester.request(payload: JSON.generate(request), timeout: timeout)
-        response = JSON.parse(response_json, symbolize_names: true)
-
-        if response[:error]
-          raise JsonRpcError.new(
-            response[:error][:message],
-            code: response[:error][:code],
-            data: response[:error][:data]
-          )
-        end
-
-        response[:result]
-      end
-
-      def method_missing(method, **params)
-        call(method.to_s, **params)
-      end
-
-      def respond_to_missing?(method, include_private = false)
-        true
-      end
-    end
-
-    # JSON-RPC responder wraps responder with JSON-RPC protocol
-    class JsonRpcResponder
-      def initialize(client, topic, handler)
-        @client = client
-        @topic = topic
-        @handler = handler
-      end
-
-      def start
-        @client.responder(@topic) do |payload|
-          request = JSON.parse(payload, symbolize_names: true)
-          
-          begin
-            result = if @handler.respond_to?(:call)
-              @handler.call(request[:method], request[:params] || {})
-            else
-              method = request[:method].to_sym
-              @handler.public_send(method, **(request[:params] || {}))
+            future = request_context.future(
+              topic, request_json, **request_opts, correlation_data: id
+            ) do |payload, content_type: 'application/json', user_properties: {}, **|
+              response.call(payload, content_type:, mqtt_properties: user_properties)
             end
+            next future if async
 
-            response = {
-              jsonrpc: '2.0',
-              result: result,
-              id: request[:id]
-            }
-          rescue => e
-            response = {
-              jsonrpc: '2.0',
-              error: {
-                code: -32603,
-                message: e.message
-              },
-              id: request[:id]
-            }
+            future.value(timeout, exception: JsonRpcKit::TimeoutError)
           end
-
-          JSON.generate(response)
         end
-      end
-    end
 
-    class Client
-      def json_rpc_requester(topic)
-        req = requester(topic)
-        JsonRpcRequester.new(req)
-      end
+        # JSON-RPC Server via MQTT Request/Response subscription. Listening for requests, serving responses.
+        # @overload json_rpc_service(receiver, *topics, **response_opts)
+        #  @param receiver [JsonRpc::Service, :json_rpc_handle] the object to receive the JSON-RPC request
+        #  @param topics [Array<String>] topic filters to listen for requests on
+        #  @param response_opts [Hash] options for {RequestResponse#response}
+        # @overload json_rpc_service(*topics, **response_opts, &receiver)
+        #  @param topics [Array<String>] topic filters to listen for requests on
+        #  @param response_opts [Hash] options for {RequestResponse#response}
+        #  @yield [method, *args, rpc_topic:, rpc_user_properties, **kwargs] block to process the request
+        #  @yieldparam method [String] the JSON_RPC method
+        #  @yieldparam *args [Array] the JSON_RPC positional arguments
+        #  @yieldparam rpc_mqtt_topic [String] the topic that the request was received on
+        #  @yieldparam rpc_mqtt_properties [Hash<String,Array<String>>]
+        #     user properties from the received MQTT message. This hash is mutable and will be reflected back in
+        #     the response.
+        #  @yieldparam **kwargs [Hash] the JSON_RPC named arguments
+        #  @yieldreturn [Object] the response object
+        # @return [Subscription, ConcurrentMonitor::Barrier]
+        # @note Request messages must have content_type property set to 'application/json' or they will be ignored.
+        def json_rpc_service(*topics, **response_opts, &receiver)
+          receiver_obj = topics.shift unless receiver
+          response(*topics, **response_opts) do |mqtt_topic, payload, content_type: nil, user_properties: {}, **|
+            rpc_options = { content_type: content_type, mqtt_topic:, mqtt_properties: user_properties }
 
-      def json_rpc_responder(topic, handler = nil, &block)
-        handler ||= block
-        responder = JsonRpcResponder.new(self, topic, handler)
-        responder.start
+            result = JsonRpcKit::Service.serve(payload, receiver_obj, **rpc_options, &receiver)
+            [result, { content_type: 'application/json', user_properties: }]
+          end
+        end
       end
     end
   end

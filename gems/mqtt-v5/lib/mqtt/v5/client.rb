@@ -12,7 +12,7 @@ module MQTT
   module V5
     # An MQTT::V5 Client
     #
-    class Client < MQTT::Core::Client
+    class Client < Core::Client
       # @!visibility private
       def self.packet_module
         Packet
@@ -22,6 +22,9 @@ module MQTT
       def self.protocol_version
         5
       end
+
+      include RequestResponse
+      include JsonRpc
 
       # @return [TopicAlias::Manager] the topic alias manager manages the bi-directional mapping of topic names to
       #   topic aliases to limit bandwidth usage.

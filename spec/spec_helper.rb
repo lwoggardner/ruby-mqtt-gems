@@ -2,6 +2,9 @@
 
 require 'minitest/autorun'
 require 'minitest/reporters'
+require 'minitest/mock'
+
+Minitest.load_plugins
 Minitest::Reporters.use! Minitest::Reporters::SpecReporter.new unless ENV.include?('RM_INFO')
 
 require 'mqtt/core'
@@ -85,7 +88,7 @@ module MQTT
       def client_spec(*specs)
         this = self
         with_brokers do
-          parallelize_me!
+          parallelize_me! unless MQTT::Logger.log.debug?
           this.with_session_stores do
             this.with_client_classes do
               include(*specs)
@@ -113,6 +116,13 @@ end
 
 def with_client(**opts, &)
   MQTT.open(uri, **client_class_opts, **opts, &)
+rescue MQTT::ConnectionError => e
+  if e.cause
+    puts "Rescued: #{e.class.name}: #{e.message}. Raising cause"
+    raise e.cause
+  end
+
+  raise
 end
 
 def wait_until(timeout = 5, delay: 0.2, &block)

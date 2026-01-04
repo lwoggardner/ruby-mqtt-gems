@@ -11,6 +11,7 @@ module MQTT
       # A Session Store that holds packets in the filesystem.
       class FilesystemSessionStore < Qos2SessionStore
         attr_reader :client_dir, :base_dir, :session_expiry_file
+        attr_accessor :disconnect_expiry_interval
 
         # @param [String] base_dir the base directory to store session files in
         # @param [String|nil] client_id
@@ -20,6 +21,7 @@ module MQTT
         def initialize(client_id:, expiry_interval:, base_dir: Dir.mktmpdir('mqtt'))
           @base_dir = Pathname.new(base_dir)
           @client_dir = (base_dir + client_id)
+          @disconnect_expiry_interval = nil # Default: don't change expiry on disconnect
           super(client_id:, expiry_interval:)
 
           @session_expiry_file = (base_dir + "#{client_id}.expiry")
@@ -92,8 +94,8 @@ module MQTT
         #    * qos2/*.released - rename to .replay_released or delete
 
         def store_qos_received(packet, unique_id)
-          client_dir + qos_path(packet.qos, packet.id, unique_id).tap do |live_file|
-            tmp_file = live_file.sub_ext('live', 'tmp')
+          Pathname.new(client_dir + qos_path(packet.qos, packet.id, unique_id)).tap do |live_file|
+            tmp_file = live_file.sub_ext('.tmp')
             tmp_file.open('wb') { |f| packet.serialize(f) }
             tmp_file.rename(live_file)
           end
@@ -104,12 +106,12 @@ module MQTT
           qos2_live = find_qos2_file(id)
 
           if qos2_live&.extname == '.live'
-            qos2_live.rename(qos2_live.sub_ext('.live', '.released'))
+            qos2_live.rename(qos2_live.sub_ext('.released'))
           else
             qos2_live&.delete
           end
 
-          super
+          true
         rescue Errno::ENOENT
           retry
         end
@@ -130,8 +132,8 @@ module MQTT
             raise SessionNotRecoverable, "Unhandled QOS2 messages in #{"#{client_dir}/qos2"}. Run recover utility"
           end
 
-          client_dir.glob('qos2/*.replay_live').each { |q2| q2.rename(q2.sub_ext('.live')) }
-          client_dir.glob('qos2/*.replay_released').each { |q2| q2.rename(q2.sub_ext('.released')) }
+          client_dir.glob('qos2/*.replay_live').each { |q2| q2.rename(q2.sub_ext('')) }
+          client_dir.glob('qos2/*.replay_released').each { |q2| q2.rename(q2.sub_ext('')) }
 
           client_dir.glob(%w[qos2/*.live qos2/*.handled]).map { |f| f.basename.to_s.split('_').last.to_i(16) }
         end

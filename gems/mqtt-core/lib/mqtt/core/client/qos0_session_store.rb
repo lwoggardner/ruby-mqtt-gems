@@ -21,6 +21,10 @@ module MQTT
           0
         end
 
+        def disconnect_expiry_interval
+          0 # QoS0 sessions don't persist
+        end
+
         def connected!
           @store = Set.new
         end

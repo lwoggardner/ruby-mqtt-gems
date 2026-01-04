@@ -13,6 +13,8 @@ module MQTT
             { protocol: 5, async: true, class_name: 'MQTT::V5::Async::Client', skip: false },
           ].reject { |opts| opts[:skip] }
            .kw_each do |class_name:, protocol:, async:, **|
+            require "mqtt/v#{protocol}"
+            require "mqtt/v#{protocol}/async/client" if async
             describe class_name do
               let(:retry_strategy) { nil }
               let(:client_class) { Object.const_get(class_name) }

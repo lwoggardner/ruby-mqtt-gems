@@ -23,7 +23,7 @@ class Thread
     # @!visibility private
     # Common task interface over Thread
     class Task < ConcurrentMonitor::Task
-      def initialize(name = nil, report_on_exception: true, &block)
+      def initialize(name_arg = nil, name: name_arg, report_on_exception: true, &block)
         super()
         @stopped = nil
         @thread = Thread.new(self, name, report_on_exception, block) do |t, n, e, b|

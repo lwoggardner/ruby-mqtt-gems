@@ -41,7 +41,7 @@ module MQTT
         def expired!(clean: clean?)
           return if clean || !session_store.expired?
 
-          raise SessionExpiacks.deletered, "Session #{session_store} for '#{client_id}' has expired"
+          raise SessionExpired, "Session #{session_store} for '#{client_id}' has expired"
         end
 
         def connected!(_connect, connack)
@@ -136,7 +136,7 @@ module MQTT
 
         # Session store interface
         def_delegators :session_store, :clean?, :expired?, :stored_packet?, :store_packet, :delete_packet,
-                       :max_qos, :validate_qos!, :qos2_published?, :qos2_release
+                       :max_qos, :validate_qos!
 
         # used in handle PUBREC/PUBREL to handle unknown packet id errors
         def qos2_response(response_name, id, exists, **data)

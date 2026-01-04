@@ -41,6 +41,18 @@ module MQTT
         payload(payload: :remaining)
 
         alias topic topic_name
+
+        # Attributes provided to {Core::Client::EnumerableSubscription}
+        MESSAGE_ATTRIBUTES =
+          %i[qos retain].freeze
+
+        # Provides packet as topic, payload and a map of attributes (See {MESSAGE_ATTRIBUTES})
+        # @yield [topic,payload,**attributes]
+        # @return [Array<String, String, Hash>] topic, payload, **attributes when no block given
+        # @return [Object] block result when block given
+        def deconstruct_message(&)
+          super(*MESSAGE_ATTRIBUTES, &)
+        end
       end
     end
   end

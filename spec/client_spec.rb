@@ -1,6 +1,13 @@
 # frozen_string_literal: true
 require_relative 'spec_helper'
 
+# TODO: Add comprehensive QoS 2 subscription tests
+# - QoS 2 subscribe/publish flow with PUBLISH → PUBREC → PUBREL → PUBCOMP
+# - Session store QoS 2 methods: qos_received, qos2_release, qos_handled  
+# - QoS 2 "exactly once" delivery guarantee verification
+# - Duplicate message handling and session recovery scenarios
+# Currently only tested indirectly via JSON-RPC tests
+
 module MQTT
   module ClientIntegrationSpec
     def self.included(spec)

@@ -50,6 +50,9 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
       def to_h
         { topic: @topic, payload: @payload, qos: @qos }
       end
+      def deconstruct_message(&)
+        super(:qos, &)
+      end
       include MQTT::Core::Packet::Publish
     end
   end

@@ -22,6 +22,9 @@ module MQTT
           case name
           when :will_properties
             return :will_user_properties if property_name == :user_properties
+            return property_name if property_name.to_s.start_with?('will_')
+
+            return :"will_#{property_name}"
           end
           property_name
         end
@@ -32,11 +35,11 @@ module MQTT
         #   @return [String<UTF8>] protocol name (managed automatically)
         # @!attribute [r] protocol_version
         #   @return [Integer] protocol version (managed automatically)
-        # @!attribute [r] clean_start
+        # @!attribute [r] clean_start?
         #   @return [Boolean] if true server will abandon any stored session (managed automatically from session store)
         # @!attribute [r] will_qos
         #   @return [Integer] QoS level for the Will message: 0, 1, or 2 (default 0)
-        # @!attribute [r] will_retain
+        # @!attribute [r] will_retain?
         #   @return [Boolean] should the Will message be retained (default false)
         # @!attribute [r] keep_alive
         #   @return [Integer] maximum duration in seconds between packets sent by the client (default 60)
@@ -51,9 +54,9 @@ module MQTT
         #   @return [Integer] maximum packet size the client is willing to accept
         # @!attribute [r] topic_alias_maximum
         #   @return [Integer] maximum topic alias value the client accepts
-        # @!attribute [r] request_response_information
+        # @!attribute [r] request_response_information?
         #   @return [Boolean] whether the client requests response information
-        # @!attribute [r] request_problem_information
+        # @!attribute [r] request_problem_information?
         #   @return [Boolean] whether the client requests problem information
         # @!attribute [r] user_properties
         #   @return [Array<String, String>] user-defined properties as key-value pairs
@@ -61,6 +64,25 @@ module MQTT
         #   @return [String<UTF8>] authentication method name
         # @!attribute [r] authentication_data
         #   @return [String<Binary>] authentication data
+
+        # @!endgroup
+
+        # @!group Will Properties
+
+        # @!attribute [r] will_payload_format_indicator
+        #   @return [Integer] payload format indicator for Will message: 0=bytes, 1=UTF-8 string
+        # @!attribute [r] will_message_expiry_interval
+        #   @return [Integer] Will message expiry interval in seconds
+        # @!attribute [r] will_content_type
+        #   @return [String<UTF8>] content type of the Will message payload
+        # @!attribute [r] will_response_topic
+        #   @return [String<UTF8>] topic name for response messages to the Will message
+        # @!attribute [r] will_correlation_data
+        #   @return [String<Binary>] correlation data for the Will message
+        # @!attribute [r] will_delay_interval
+        #   @return [Integer] Will delay interval in seconds
+        # @!attribute [r] will_user_properties
+        #   @return [Array<String, String>] user-defined properties for Will message as key-value pairs
 
         # @!endgroup
 
@@ -106,9 +128,22 @@ module MQTT
         alias password? :password_flag
         alias will_flag? :will_flag
 
+        alias request_response_information? request_response_information
+        alias request_problem_information? request_problem_information
+
         # @!visibility private
         def defaults
           super.merge!(client_id: '', keep_alive: 60, will_retain: false, will_qos: 0, clean_start: false)
+        end
+
+        # @!visibility private
+        def apply_data(data)
+          # Auto-set payload_format_indicator for UTF-8 will payloads before binary conversion
+          if data[:will_payload]&.encoding == Encoding::UTF_8
+            data[:will_properties] ||= {}
+            data[:will_properties][:payload_format_indicator] = 1
+          end
+          super
         end
 
         # @!visibility private
@@ -118,6 +153,15 @@ module MQTT
             protocol_name: 'MQTT',
             protocol_version: PROTOCOL_VERSION
           )
+        end
+
+        # @!visibility private
+        def deserialize(header_byte, io)
+          super
+          return unless will_payload_format_indicator == 1
+
+          # Auto-encode will_payload as UTF-8 per MQTT 5.0 spec
+          will_payload.force_encoding(Encoding::UTF_8)
         end
 
         # @!visibility private

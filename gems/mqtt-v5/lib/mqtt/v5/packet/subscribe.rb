@@ -81,6 +81,25 @@ module MQTT
             super
           end
         end
+
+        def apply_overrides(data)
+          super
+          # Transform $share/group/topic filters to just topic for matching
+          @fully_qualified_topics&.map! { |tf| extract_topic_filter(tf) }
+          @wildcard_topics&.map! { |tf| extract_topic_filter(tf) }
+        end
+
+        private
+
+        def extract_topic_filter(topic_filter)
+          # Extract actual topic filter from $share/groupname/topicfilter format
+          if topic_filter.start_with?('$share/')
+            parts = topic_filter.split('/', 3)
+            parts.length >= 3 ? parts[2] : topic_filter
+          else
+            topic_filter
+          end
+        end
       end
     end
   end

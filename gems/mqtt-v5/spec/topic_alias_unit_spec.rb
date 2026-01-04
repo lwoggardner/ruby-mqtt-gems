@@ -191,7 +191,7 @@ describe 'MQTT::V5::TopicAlias' do
     end
 
     it 'defaults to LRUPolicy policy when maximum is positive' do
-      _(manager.policy.must_be_instance_of MQTT::V5::TopicAlias::LRUPolicy)
+      _(manager.policy).must_be_instance_of MQTT::V5::TopicAlias::LRUPolicy
     end
 
     it 'has no policy when maximum is zero' do

@@ -122,6 +122,12 @@ module MQTT
 
           @expiry_interval = expiry_interval
         end
+
+        # @return [Integer|nil] session expiry interval to use in DISCONNECT packet
+        # nil means don't include the property (keep current server-side expiry)
+        def disconnect_expiry_interval
+          nil # Default: don't change expiry interval on disconnect
+        end
       end
     end
   end

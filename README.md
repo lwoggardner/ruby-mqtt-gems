@@ -259,12 +259,24 @@ Subscriptions that process events for the lifetime of a session should be establ
 the Client, topic filters originally used in the `SUBSCRIBE` packet, but excluding any  still in use in other active
 Subscriptions, are unsubscribed from the broker.
 
-The bang(!) methods on {MQTT::Core::Client::Subscription} are shorthand that wrap their standard counterparts in an 'ensure' block 
-that calls `#unsubscribe`
+The bang(!) methods on {MQTT::Core::Client::Subscription} and {MQTT::Core::Client::EnumerableSubscription} are shorthand
+that wrap their standard counterparts in an 'ensure' block that calls `#unsubscribe`
+
+Code that is enumerating messages via {MQTT::Core::Client::EnumerableSubscription#each} can also throw `:unsubscribe`
 
 ```ruby
 sub = client.subscribe('topic1', 'topic2', 'prefix/#')
 
+# explicitly unsubscribe
+sub.unsubscribe
+
+# via #each and throw :unsubscribe
+sub.each do |topic,payload|
+  throw :unsubscribe if payload == 'offline'
+  process(topic, payload)
+end
+
+# via #each! and ending enumeration via break
 sub.each! do |topic, payload|
   break if payload == 'offline'
   process(topic, payload)
@@ -272,13 +284,12 @@ end
 # now unsubscribed
 
 client.subscribe('topic1', 'topic2', 'prefix/#').tap! do |sub2|
-  # fun with sub2
+  # ... fun with sub2
 end 
 # sub2(:unsubscribed)
 
-# Any Enumerable method can be called with ! suffix to ensure unsubscribe
+# automatically unsubscribed after receiving 5 messages via bang suffix method
 messages = client.subscribe('topic/x').take!(5)
-# automatically unsubscribed after receiving 5 messages
 ```
 
 ### Disconnecting ###
@@ -461,13 +472,14 @@ By default, a 'Least Recently Used' (LRU) policy is used to determine which alia
 See {MQTT::V5::TopicAlias} for details.
 
 #### V5 Request / Response
+
 ```ruby
 # TODO: Incomplete
 # Subscription#get, #read can also be used to wait for one message at a time
 # eg simple request/response per MQTT 5.0
 response_topic = "my/api/v1/responses/#{my_uuid}"
 sub = client.subscribe(response_topic)
-_pub, ack = client.publish('my/api/v1/requests', request.to_json, qos: 1, response_topic:)
+_pub, ack = client.publish('my/api/v1/requests', invoke.to_json, qos: 1, response_topic:)
 raise 'no responder @ my/api/v1/requests' if ack.reason_code.code == 0x10
 JSON.parse(sub.read)
 ```

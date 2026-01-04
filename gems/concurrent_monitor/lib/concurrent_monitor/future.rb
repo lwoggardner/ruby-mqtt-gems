@@ -13,9 +13,11 @@ module ConcurrentMonitor
 
     # Blocks until the future is completed or the timeout expires
     # @return [Object] The value with which the future was fulfilled
+    # @param timeout [Numeric] The maximum time to wait for the future to complete
+    # @param wait_opts [Hash] options passed to {TimeoutClock#wait_until}
     # @raise [StandardError] If the future was rejected
-    def value
-      wait
+    def value(timeout = nil, **wait_opts)
+      wait(timeout, **wait_opts)
       raise @error if @error
 
       @value

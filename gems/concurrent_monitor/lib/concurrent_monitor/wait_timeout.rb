@@ -11,7 +11,7 @@ module ConcurrentMonitor
     # @param [Exception|nil] exception an exception to raise on timeout
     # @return [Object] the truthy return value of the block
     # @return [nil] if a timeout occurs
-    def wait_until(timeout = nil, exception: nil)
+    def wait_until(timeout_arg = nil, timeout: timeout_arg, exception: nil)
       TimeoutClock.wait_until(timeout, exception:) { |remaining| yield || (wait(remaining) && false) }
     end
 

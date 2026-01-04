@@ -92,6 +92,10 @@ module MQTT
           sub_packet.match?(publish_packet)
         end
 
+        def match_topic?(topic_name)
+          sub_packet.match_topic?(topic_name)
+        end
+
         private
 
         def unsubscribe_params
@@ -99,8 +103,6 @@ module MQTT
         end
 
         def handle(packet)
-          raise packet if packet.is_a?(StandardError)
-
           (block_given? ? yield(packet) : packet).tap { client.handled!(packet) if packet&.qos&.positive? }
         end
       end

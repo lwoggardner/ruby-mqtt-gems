@@ -43,7 +43,7 @@ module ConcurrentMonitor
     # @param [:to_s] name
     # @param [Boolean] report_on_exception
     # @return [Task]
-    def async(name = nil, report_on_exception: false, &)
+    def async(name_arg = nil, name: name_arg, report_on_exception: false, &)
       synchronize { monitor.async(name, report_on_exception:) { |t| run_task(t, &) }.tap { |t| tasks << t } }
     end
 
@@ -94,6 +94,11 @@ module ConcurrentMonitor
     # @return [self] if no block is given
     def wait
       (block_given? ? yield(self) : self).tap { each(&:itself) }
+    end
+
+    # The value of a barrier is the array of values of all its tasks.
+    def value
+      to_a
     end
 
     # {#wait}, ensuring {#stop}

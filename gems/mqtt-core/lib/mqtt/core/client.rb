@@ -582,13 +582,18 @@ module MQTT
       def birth!
         async(:birth) do
           handle_event(:birth)
-          session.birth_complete!
+          birth_complete!
         rescue ConnectionError => e
           log.warn { "Ignoring ConnectionError in birth handler: #{e.class}: #{e.message}" }
         rescue StandardError => e
           log.error { "Unexpected error in birth handler: #{e.class}: #{e.message}. Disconnecting..." }
           disconnect(cause: e)
         end
+      end
+
+      # to be overridden in V5 for automatic response subscription.
+      def birth_complete!
+        session.birth_complete!
       end
 
       # @note synchronized - sub needs to be available to immediate receive publish

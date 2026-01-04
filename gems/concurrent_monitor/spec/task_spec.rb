@@ -121,7 +121,6 @@ module ConcurrentMonitor
                 sleep(0.05)
                 raise 'oops'
               end
-              sleep(0.2)
               _(-> { task.join }).must_raise('oops')
               task.stop
               _(-> { task.join }).must_raise('oops')

@@ -108,7 +108,31 @@ module MQTT
         # @!visibility private
         def apply_overrides(data)
           super
-          data[:payload_format_indicator] = 1 if payload&.encoding == Encoding::UTF_8
+          return unless payload&.encoding == Encoding::UTF_8
+
+          data[:properties] ||= {}
+          data[:properties][:payload_format_indicator] = 1
+        end
+
+        # @!visibility private
+        def deserialize(header_byte, io)
+          super
+          return unless payload_format_indicator == 1
+
+          # Auto-encode payload as UTF-8 per MQTT 5.0 spec
+          payload.force_encoding(Encoding::UTF_8)
+        end
+
+        # Attributes provided to {Core::Client::EnumerableSubscription}
+        MESSAGE_ATTRIBUTES =
+          %i[qos retain message_expiry_interval response_topic correlation_data content_type user_properties].freeze
+
+        # Provides packet as topic, payload and a map of attributes (See {MESSAGE_ATTRIBUTES})
+        # @yield [topic,payload,**attributes]
+        # @return [Array<String, String, Hash>] topic, payload, **attributes when no block given
+        # @return [Object] block result when block given
+        def deconstruct_message(&)
+          super(*MESSAGE_ATTRIBUTES, &)
         end
 
         # @!visibility private
