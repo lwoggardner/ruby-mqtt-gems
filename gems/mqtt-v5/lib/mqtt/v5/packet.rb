@@ -24,22 +24,26 @@ module MQTT
         boolean: MQTT::Core::Type::BooleanByte
       }.freeze
 
-      # Available property types for MQTT version 5.0
-      # @note :user_properties
-      #   The spec uses the singular 'user_property' - but it is the only property that can occur more than once
-      #   and it the key in the pair can itself appear more than once, so we represent it as Array<String,String>
-      #   and give it the plural name
+      # @!attribute [r] user_properties
+      #   list of user defined key,value pairs, a key may appear more than once
+      #
+      #   Outgoing packets will accept a Hash as input
+      #   @return [Array<[String,String]>]
 
-      # Attributes stored as a list of properties
+      # @!method initialize(**attributes)
+      #  @abstract
+      #  @param attributes [Hash] any of the specific Packet classes' attributes
+      #  @option attributes :user_properties [Array<[String,String]>, #to_a<[String,String]>]
+      #
+      #  @return [Packet] a specific class of Packet
+
+      # Available property types for MQTT version 5.0
       PROPERTY_TYPES = [
         [0x01, :payload_format_indicator, :int8, %i[publish will]],
         [0x02, :message_expiry_interval, :int32, %i[publish will]],
         [0x03, :content_type, :utf8string, %i[publish will]],
         [0x08, :response_topic, :utf8string, %i[publish will]],
         [0x09, :correlation_data, :binary, %i[publish will]],
-        # @!attribute [r] subscription_identifier
-        #   @return [Integer] (publish)
-        #   @return [Array<Integer>] (subscribe)
         [0x0B, :subscription_identifier, :varint, %i[subscribe]],
         [0x0B, :subscription_identifiers, [:varint], %i[publish]], # this is only sent by servers
         [0x11, :session_expiry_interval, :int32, %i[connect connack disconnect]],
@@ -58,16 +62,12 @@ module MQTT
         [0x23, :topic_alias, :int16, [:publish]],
         [0x24, :maximum_qos, :int8, [:connack]],
         [0x25, :retain_available, :boolean, [:connack]],
-        # @!attribute [r] user_properties
-        #   @return [Array<String,String>] list of key,value pairs, same key may appear more than once
         [0x26, :user_properties, [:utf8pair], :all],
         [0x27, :maximum_packet_size, :int32, %i[connect connack]],
         [0x28, :wildcard_subscription_available, :boolean, [:connack]],
         [0x29, :subscription_identifier_available, :boolean, [:connack]],
         [0x2A, :shared_subscription_available, :boolean, [:connack]]
       ].map { |data| MQTT::Core::Type::Properties::PropertyType.create(*data, types: VALUE_TYPES) }.freeze
-
-      # If the sender is compliant with this specification it will not send Malformed Packets or cause Protocol Errors
 
       # Reason codes
       REASON_CODES = [

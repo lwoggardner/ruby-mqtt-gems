@@ -8,7 +8,7 @@ A transport-agnostic JSON-RPC 2.0 toolkit for Ruby that provides both client and
 - **Client Endpoint**: Method missing magic for natural Ruby method calls
 - **Server Service**: Include module to make any Ruby object JSON-RPC capable
 - **Ruby Semantics**: Automatic snake_case to camelCase conversion
-- **Error Handling**: Complete JSON-RPC error hierarchy
+- **Error Handling**: JSON-RPC error hierarchy
 
 ## Installation
 
@@ -22,19 +22,8 @@ gem 'json_rpc_kit'
 
 ### Client (Endpoint)
 
-Invoke JSON-RPC methods directly
+Create an endpoint with a transport block and invoke methods
 
-```ruby
-require 'json_rpc_kit'
-
-JsonRpcKit.invoke('users.getUser', 123) do |id, request_json, **opts, &response|
-  # Your transport implementation here
-  response_json = http_post(request_json, content_type: 'application/json', **opts)
-  response.call(response_json) if id # nil id is a notification
-end
-```
-
-Invoke using ruby methods on an endpoint
 ```ruby
 require 'json_rpc_kit'
 
@@ -51,8 +40,12 @@ result = endpoint.get_user(123) # > { "method" : "users.getUser", "params" : [ 1
 users = endpoint.list_users(limit: 10)  # > { "method" : "users.listUsers", "params": { "limit" : 10 } }
 
 # Notifications (fire and forget) > { "method" : "system.logEvent", "params" : { "message" : "Hello"} }
-endpoint.log_event(message: "Hello", rpc_notify: true, rpc_namespace: 'system')  
-endpoint.json_rpc_notify('system.logEvent', message: "Hello")
+endpoint.log_event!(message: "Hello")  # Bang method for notifications
+endpoint.json_rpc_notify(:log_event, message: "Hello")
+
+# Transport options via #with
+endpoint.with(timeout: 30).get_user(123)
+endpoint.with(async: true).slow_operation(data: "...")
 ```
 
 Asynchronous calls if supported by the transport
@@ -60,7 +53,7 @@ Asynchronous calls if supported by the transport
 
 endpoint = JsonRpcKit.endpoint do |id, request_json, async: false, timeout: nil, &response|
   # Some transport that returns a future/promise and can carry a Proc to resolve value/error from the response string
-  future = http_post_async(request_json) { |response_json| response.call(result) }
+  future = http_post_async(request_json) { |response_json| response.call(response_json) }
   
   # just return the future if async requested
   next future if async
@@ -70,7 +63,7 @@ endpoint = JsonRpcKit.endpoint do |id, request_json, async: false, timeout: nil,
 end
 
 # Async calls (returns transport-specific future/promise)
-future = endpoint.json_rpc_async(:slow_operation, data: "...")
+future = endpoint.json_rpc_async(:next_id, :slow_operation, data: "...")
 # ... do some other work in the meantime ...
 future.then { |result| puts result }
 ```
@@ -108,47 +101,28 @@ response_json = service.json_rpc_serve(request_json, content_type:)
 
 ### Transport Integration
 
-The gem provides the protocol layer - you implement the transport:
+The gem provides the protocol layer - you find a transport that is already integrated or implement one yourself:
 
 ```ruby
-# HTTP transport example
-endpoint = JsonRpcKit::Endpoint.new do |id, request_json, timeout: 30, **opts, &response|
+# Integrated MQTT transport example
+
+# Get an MQTT V5 client, with Request/Response features enabled
+require 'mqtt/v5'
+client = MQTT.open('mqtt://...', request_response_information: true)
+# Start an endpoint that sends requests to a service topic
+endpoint = client.json_rpc_endpoint('service/api-v1')
+
+# DIY HTTP transport example
+endpoint = JsonRpcKit::Endpoint.new do |id, request_json, timeout: 30, content_type:, **opts, &response|
   http_response = Net::HTTP.post(uri, request_json,
-                                 'Content-Type' => 'application/json',
+                                 'Content-Type' => content_type, # 'application/json'
                                  'Timeout' => timeout
   )
   response.call(http_response.body)
 end
 
-# MQTT transport example  
-endpoint = JsonRpcKit::Endpoint.new do |id, request_json, qos: 0, **opts, &response|
-  if id # Request
-    mqtt_client.invoke(topic, request_json, qos: qos, &response)
-  else
-    # Notification
-    mqtt_client.publish(topic, request_json, qos: qos)
-  end
-end
+endpoint.list_users #> Call JSON-RPC listUsers method over the configured transport
 ```
-
-## Error Handling
-
-```ruby
-begin
-  result = endpoint.get_user(999)
-rescue JsonRpcKit::Error => e
-  puts "JSON-RPC Error #{e.code}: #{e.message}"
-  puts "Data: #{e.data}" if e.data
-end
-```
-
-## Development
-
-After checking out the repo, run `bundle install` to install dependencies.
-
-## Contributing
-
-Bug reports and pull requests are welcome on GitHub.
 
 ## License
 

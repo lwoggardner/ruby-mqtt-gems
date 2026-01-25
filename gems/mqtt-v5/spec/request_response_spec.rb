@@ -22,7 +22,7 @@ module MQTT
                 with_client(session_store: responder_client.class.memory_store) do |requester_client|
                   requester_client.connect(request_response_information: true)
                   
-                  response = requester_client.request(topic, "hello", timeout: 2)
+                  response = requester_client.request(topic, "hello", message_expiry_interval: 2)
                   _(response).must_equal("echo: hello")
                 end
               end
@@ -43,7 +43,7 @@ module MQTT
                   
                   tasks = 3.times.map do |i|
                     requester_client.async do
-                      requester_client.request(topic, "request-#{i}", timeout: 2)
+                      requester_client.request(topic, "request-#{i}", message_expiry_interval: 2)
                     end
                   end
                   
@@ -61,7 +61,7 @@ module MQTT
                 client.connect(request_response_information: true)
                 topic = "test/noservice/#{client.client_id}"
                 
-                _(proc { client.request(topic, 'hello', timeout: 0.5) }).must_raise(MQTT::V5::Client::RequestResponse::TimeoutError)
+                _(proc { client.request(topic, 'hello', message_expiry_interval: 0.5) }).must_raise(MQTT::V5::Client::RequestResponse::TimeoutError)
               end
             end
 
@@ -71,10 +71,10 @@ module MQTT
                 
                 # Create custom context - use client's max QoS to work with all session stores
                 qos = [client.max_qos, 1].min
-                ctx = client.new_request_context('api', pub_qos: qos)
+                ctx = client.new_request_context('api', pub_opts: { qos: qos })
                 
                 _(ctx.response_base).must_match(/\/api$/)
-                _(ctx.pub_qos).must_equal(qos)
+                _(ctx.pub_opts[:qos]).must_equal(qos)
               end
             end
 
@@ -92,13 +92,14 @@ module MQTT
                   ctx = requester_client.default_request_context
                   
                   # Test future (non-blocking)
-                  future = ctx.future(topic, 'test message')
+                  future = ctx.request(topic, 'test message', future: true)
                   _(future).must_be_kind_of(ConcurrentMonitor::Future)
-                  result = future.value(timeout: 2)
+                  future.wait(timeout: 2)
+                  result = future.value
                   _(result).must_equal('echo: test message')
                   
                   # Test blocking request
-                  result = ctx.request(topic, 'test message', timeout: 2)
+                  result = ctx.request(topic, 'test message', message_expiry_interval: 2)
                   _(result).must_equal('echo: test message')
                 end
               end
@@ -137,7 +138,7 @@ module MQTT
                 # Send 9 requests to test load balancing across 3 responders
                 request_responses = []
                 9.times do |i|
-                  response = requester.request(service_topic, "request-#{i}", timeout: 2)
+                  response = requester.request(service_topic, "request-#{i}", message_expiry_interval: 2)
                   request_responses << response
                 end
                 
@@ -164,6 +165,40 @@ module MQTT
                 responders.each(&:disconnect)
               end
             end
+
+            it 'no response sent when processing exceeds expiry interval' do
+              with_client do |server_client|
+                # Track publishes with correlation_data (responses)
+                response_publishes = []
+                server_client.on_publish do |publish, ack|
+                  response_publishes << publish if publish.correlation_data
+                end
+                
+                server_client.connect(request_response_information: true)
+                
+                # Set up responder that takes too long
+                server_client.response('test/slow') do |topic, payload|
+                  sleep 2  # Process longer than expiry
+                  'too late'
+                end
+                
+                with_client(session_store: server_client.class.memory_store) do |client|
+                  client.connect(request_response_information: true)
+                  
+                  # Send request with 1 second expiry
+                  begin
+                    client.request('test/slow', 'data', message_expiry_interval: 1)
+                  rescue MQTT::Error
+                    # Expected to timeout
+                  end
+                  
+                  # Wait for processing to complete
+                  sleep 2.5
+                  
+                  _(response_publishes).must_be_empty
+                end
+              end
+            end
           end
         end
       end
@@ -171,4 +206,4 @@ module MQTT
   end
 end
 
-MQTT::V5::SpecHelper.client_spec(MQTT::V5::RequestResponseSpec)
+MQTT::SpecHelper.client_spec(MQTT::V5::RequestResponseSpec, protocol_version: 5)

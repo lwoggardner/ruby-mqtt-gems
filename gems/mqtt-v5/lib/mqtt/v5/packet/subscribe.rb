@@ -24,6 +24,7 @@ module MQTT
 
         # @!attribute [r] subscription_identifier
         #   @return [Integer] identifier for this subscription
+
         # @!attribute [r] user_properties
         #   @return [Array<String, String>] user-defined properties as key-value pairs
 
@@ -39,7 +40,7 @@ module MQTT
         #     #   @return [Boolean] do not forward messages back to same client id
         #     # @!attribute [r] retain_as_published
         #     #   @return [Boolean] retain flag from PUBLISH should be preserved
-        #     # @!attribute [r] retain
+        #     # @!attribute [r] retain_handling
         #     #   @return [Integer]
         #     #   retained message handling
         #     #
@@ -55,13 +56,17 @@ module MQTT
           packet_identifier: :int16,
           properties:
         )
+
+        # TODO: We can probably pull this out of the subscription option flags
+        TOPIC_FILTER_OPTIONS = %i[retain retain_as_published retain_handling no_local].freeze
+
         payload(
           topic_filters: list(
             :topic_filter,
             topic_filter: :utf8string,
             subscription_options: flags(
               [:reserved, 2],
-              [:retain, 2],
+              [:retain_handling, 2],
               :retain_as_published,
               :no_local,
               [:max_qos, 2]

@@ -125,7 +125,8 @@ module MQTT
           MAX_PACKET_ID
         end
 
-        def_delegators :session_store, :disconnected!, :client_id, :retry_packets, :expiry_interval=
+        def_delegators :session_store, :disconnected!, :client_id, :retry_packets, :expiry_interval=,
+                       :max_qos, :validate_qos!
 
         private
 
@@ -135,8 +136,7 @@ module MQTT
         def_delegators :@client, :build_packet, :deserialize, :push_packet, :receive_ack, :receive_publish
 
         # Session store interface
-        def_delegators :session_store, :clean?, :expired?, :stored_packet?, :store_packet, :delete_packet,
-                       :max_qos, :validate_qos!
+        def_delegators :session_store, :clean?, :expired?, :stored_packet?, :store_packet, :delete_packet
 
         # used in handle PUBREC/PUBREL to handle unknown packet id errors
         def qos2_response(response_name, id, exists, **data)

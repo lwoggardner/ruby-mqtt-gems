@@ -129,4 +129,4 @@ module MQTT
   end
 end
 
-MQTT::V5::SpecHelper.client_spec(MQTT::V5::TopicAliasSpec)
+MQTT::SpecHelper.client_spec(MQTT::V5::TopicAliasSpec, protocol_version: 5)

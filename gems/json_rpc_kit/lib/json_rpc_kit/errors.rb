@@ -9,11 +9,9 @@ module JsonRpcKit
 
     class << self
       # @!visibility private
-      def raise_error(json_error)
-        code, message, data = json_error.values_at(:code, :message, :data)
-
+      def raise_error(code:, message:, data: nil, **)
         error_class = ERROR_CODES.fetch(code, JsonRpcKit::Error)
-        raise error_class.new(message, code: code, **data) if error_class <= JsonRpcKit::Error
+        raise error_class.new(message, code:, data:) if error_class <= JsonRpcKit::Error
 
         raise error_class, message
       end
@@ -29,22 +27,26 @@ module JsonRpcKit
         data ||= { class_name: error.class.name } unless code
         code ||= -32_603
 
-        { jsonrpc: '2.0', id: id, error: { code: code, message: error.message, data: data }.compact }.compact.to_json
+        { jsonrpc: '2.0', id: id, error: { code: code, message: error.message, data: data }.compact }
       end
     end
 
-    # Create
-    def initialize(message, code:, **data)
+    # Create a JSON-RPC error
+    # @param message [String]
+    # @param code [Integer]
+    # @param data [Object] ignored any kw_data is passed
+    # @param kw_data [Hash] data as keyword arguments
+    def initialize(message, code:, data: nil, **kw_data)
       super(message)
       @code = code
-      @data = data
+      @data = kw_data.any? ? kw_data : data
     end
   end
 
   # Invalid Request
   class InvalidRequest < Error
     CODE = -32_600
-    def initialize(message, code: CODE, **data)
+    def initialize(message, code: CODE, data: nil, **kw_data)
       super
     end
   end
@@ -52,7 +54,7 @@ module JsonRpcKit
   # Internal Error
   class InternalError < Error
     CODE = -32_603
-    def initialize(message, code: CODE, **data)
+    def initialize(message, code: CODE, data: nil, **kw_data)
       super
     end
   end
@@ -63,7 +65,7 @@ module JsonRpcKit
   # Default timeout error for JSON-RPC requests
   class TimeoutError < Error
     CODE = -32_070
-    def initialize(message, code: CODE, data: nil)
+    def initialize(message, code: CODE, data: nil, **kw_data)
       super
     end
   end

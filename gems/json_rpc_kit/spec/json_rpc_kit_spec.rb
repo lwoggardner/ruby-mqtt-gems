@@ -13,16 +13,19 @@ describe JsonRpcKit do
 end
 
 describe JsonRpcKit::Service do
-  describe '.serve' do
+  describe '.transport' do
     it 'handles valid JSON-RPC request with block' do
       request = { jsonrpc: '2.0', method: 'add', params: [1, 2], id: '123' }.to_json
       
-      response_json = JsonRpcKit::Service.serve(request) do |method, *args|
+      handler = JsonRpcKit::Service.transport(merge: nil) do |request_opts, response_opts, id, method, *args, **kwargs|
         case method
         when 'add' then args.sum
         else raise NoMethodError, "Unknown method: #{method}"
         end
       end
+      
+      response_json = nil
+      handler.call(request) { |json, opts| response_json = json }
       
       response = JSON.parse(response_json, symbolize_names: true)
       _(response[:jsonrpc]).must_equal '2.0'
@@ -33,23 +36,27 @@ describe JsonRpcKit::Service do
     it 'handles JSON-RPC notification (no id)' do
       request = { jsonrpc: '2.0', method: 'notify', params: ['hello'] }.to_json
       
-      response_json = JsonRpcKit::Service.serve(request) do |method, *args|
+      handler = JsonRpcKit::Service.transport(merge: nil) do |request_opts, response_opts, id, method, *args, **kwargs|
         # Notification handler
         nil
       end
       
-      response = JSON.parse(response_json, symbolize_names: true)
-      _(response[:jsonrpc]).must_equal '2.0'
-      _(response.key?(:id)).must_equal false
-      _(response[:result]).must_be_nil
+      response_json = :not_called
+      handler.call(request) { |json, opts| response_json = json }
+      
+      # Notifications should not return a response
+      _(response_json).must_be_nil
     end
 
     it 'handles errors in service method' do
       request = { jsonrpc: '2.0', method: 'error', id: '123' }.to_json
       
-      response_json = JsonRpcKit::Service.serve(request) do |method|
+      handler = JsonRpcKit::Service.transport(merge: nil) do |request_opts, response_opts, id, method, *args, **kwargs|
         raise StandardError, "Something went wrong"
       end
+      
+      response_json = nil
+      handler.call(request) { |json, opts| response_json = json }
       
       response = JSON.parse(response_json, symbolize_names: true)
       _(response[:jsonrpc]).must_equal '2.0'
@@ -62,9 +69,12 @@ describe JsonRpcKit::Service do
     it 'handles custom JsonRpcKit::Error' do
       request = { jsonrpc: '2.0', method: 'custom_error', id: '123' }.to_json
       
-      response_json = JsonRpcKit::Service.serve(request) do |method|
+      handler = JsonRpcKit::Service.transport(merge: nil) do |request_opts, response_opts, id, method, *args, **kwargs|
         raise JsonRpcKit::Error.new("Custom error", code: -1000, extra: 'info')
       end
+      
+      response_json = nil
+      handler.call(request) { |json, opts| response_json = json }
       
       response = JSON.parse(response_json, symbolize_names: true)
       _(response[:jsonrpc]).must_equal '2.0'
@@ -119,5 +129,87 @@ describe JsonRpcKit::Endpoint do
     end
     
     _(captured_request[:method]).must_equal 'api.getUser'  # Namespace + converted method
+  end
+
+  describe 'error mapping' do
+    it 'raises NoMethodError when receiving -32601 error code' do
+      endpoint = JsonRpcKit.endpoint do |id, request_json, **opts, &response|
+        error_response = { jsonrpc: '2.0', id: id, error: { code: -32601, message: 'Method not found' } }.to_json
+        response.call { error_response }
+      end
+
+      error = _(proc { endpoint.unknown_method }).must_raise(NoMethodError)
+      _(error.message).must_equal 'Method not found'
+    end
+
+    it 'raises ArgumentError when receiving -32602 error code' do
+      endpoint = JsonRpcKit.endpoint do |id, request_json, **opts, &response|
+        error_response = { jsonrpc: '2.0', id: id, error: { code: -32602, message: 'Invalid params' } }.to_json
+        response.call { error_response }
+      end
+
+      error = _(proc { endpoint.test_method }).must_raise(ArgumentError)
+      _(error.message).must_equal 'Invalid params'
+    end
+
+    it 'raises JSON::ParserError when receiving -32700 error code' do
+      endpoint = JsonRpcKit.endpoint do |id, request_json, **opts, &response|
+        error_response = { jsonrpc: '2.0', id: id, error: { code: -32700, message: 'Parse error' } }.to_json
+        response.call { error_response }
+      end
+
+      error = _(proc { endpoint.test_method }).must_raise(JSON::ParserError)
+      _(error.message).must_equal 'Parse error'
+    end
+
+    it 'raises JsonRpcKit::Error for custom error codes' do
+      endpoint = JsonRpcKit.endpoint do |id, request_json, **opts, &response|
+        error_response = { jsonrpc: '2.0', id: id, error: { code: -1000, message: 'Custom error', data: { extra: 'info' } } }.to_json
+        response.call { error_response }
+      end
+
+      error = _(proc { endpoint.test_method }).must_raise(JsonRpcKit::Error)
+      _(error.message).must_equal 'Custom error'
+      _(error.code).must_equal(-1000)
+      _(error.data).must_equal({ extra: 'info' })
+    end
+
+    it 'raises InvalidResponse for non-JSON response' do
+      endpoint = JsonRpcKit.endpoint do |id, request_json, **opts, &response|
+        response.call { 'not valid json{' }
+      end
+
+      _(proc { endpoint.test_method }).must_raise(JsonRpcKit::InvalidResponse)
+    end
+
+    it 'raises InvalidResponse for response missing jsonrpc field' do
+      endpoint = JsonRpcKit.endpoint do |id, request_json, **opts, &response|
+        invalid_response = { id: id, result: 'test' }.to_json
+        response.call { invalid_response }
+      end
+
+      error = _(proc { endpoint.test_method }).must_raise(JsonRpcKit::InvalidResponse)
+      _(error.message).must_include 'JSON-RPC'
+    end
+
+    it 'raises InvalidResponse for error without code' do
+      endpoint = JsonRpcKit.endpoint do |id, request_json, **opts, &response|
+        invalid_error = { jsonrpc: '2.0', id: id, error: { message: 'Error without code' } }.to_json
+        response.call { invalid_error }
+      end
+
+      error = _(proc { endpoint.test_method }).must_raise(JsonRpcKit::InvalidResponse)
+      _(error.message).must_include 'code'
+    end
+
+    it 'raises InvalidResponse for error without message' do
+      endpoint = JsonRpcKit.endpoint do |id, request_json, **opts, &response|
+        invalid_error = { jsonrpc: '2.0', id: id, error: { code: -32000 } }.to_json
+        response.call { invalid_error }
+      end
+
+      error = _(proc { endpoint.test_method }).must_raise(JsonRpcKit::InvalidResponse)
+      _(error.message).must_include 'message'
+    end
   end
 end

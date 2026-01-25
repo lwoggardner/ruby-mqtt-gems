@@ -52,7 +52,7 @@ module MQTT
         end
 
         def validate_qos!(requested_qos)
-          return if requested_qos <= max_qos
+          return requested_qos if requested_qos <= max_qos
 
           raise QoSNotSupported, "QoS #{requested_qos} is not supported by #{self.class}"
         end

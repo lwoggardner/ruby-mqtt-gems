@@ -115,15 +115,17 @@ module MQTT
       # SocketFactory will claim its keyword options, client_opts is left with the remaining options
       sf = Core::Client::SocketFactory.create(*io_args, options: client_opts)
       client_opts.merge!(sf.query_params) if sf.respond_to?(:query_params)
-      MQTT::Logger.configure(**slice_opts!(client_opts, /^log_(.*)$/))
+      MQTT::Logger.configure(**slice_opts!(client_opts, prefix: 'log_'))
 
       class_opts = { async: async, protocol_version: client_opts.delete(:protocol_version) || %w[5 3] }
       client_class = client_class(**class_opts)
 
-      session_store = session_store(**slice_opts!(client_opts, :client_id, :session_store, /^session_(.*)$/))
+      session_store = session_store(
+        **slice_opts!(client_opts, :client_id, :session_store, prefix: 'session_')
+      )
 
       open_opts = {
-        **retry_strategy(max_qos: session_store.max_qos, **slice_opts!(client_opts, :retry_strategy, /^retry_(.*)$/)),
+        **retry_strategy(max_qos: session_store.max_qos, **slice_opts!(client_opts, :retry_strategy, prefix: 'retry_')),
         **slice_opts!(client_opts, :keep_alive)
       }
 
@@ -183,9 +185,7 @@ module MQTT
     end
 
     def session_store(session_store: nil, **opts)
-      return session_store.call(**opts) if session_store.respond_to?(:call)
-      return session_store.new(**opts) if session_store.is_a?(Class)
-      return session_store if session_store # expecting something that quacks like Core::Client::SessionStore
+      return construct(session_store, **opts) if session_store
 
       return Core::Client.file_store(**opts) if opts.key?(:base_dir)
       return Core::Client.memory_store(**opts) if opts.key?(:expiry_interval)
@@ -197,25 +197,26 @@ module MQTT
     # @see open
     def retry_strategy(max_qos:, retry_strategy: max_qos.positive? || :__not_set__, **options)
       return {} if retry_strategy == :__not_set__ && options.empty?
-      return { retry_strategy: retry_strategy.call(**options) } if retry_strategy.respond_to?(:call)
-      return { retry_strategy: retry_strategy.new(**options) } if retry_strategy.is_a?(Class)
-      return { retry_strategy: false } if %w[false 0 no n nil].include?(retry_strategy.to_s.downcase)
+      return { retry_strategy: false } if %w[false 0 no n nil].include?(retry_strategy.to_s.downcase) && options.empty?
+      return { retry_strategy: construct(retry_strategy, **options) } if retry_strategy
 
       { retry_strategy: Core::Client.retry_strategy(**options) }
     end
 
     # extract from client_opts into open_opts
     def v5_specific_options(protocol_version, client_opts, open_opts)
-      ta_keys = [:topic_aliases, :topic_alias_maximum, /^topic_alias_(.*)$/]
-      v5_opts(protocol_version, client_opts, open_opts, *ta_keys) { |**ta_opts| topic_alias_opts(**ta_opts) }
+      v5_opts(
+        protocol_version, client_opts, open_opts,
+        :topic_aliases, :topic_alias_maximum, prefix: 'topic_alias_'
+      ) { |**ta_opts| topic_alias_opts(**ta_opts) }
     end
 
-    def v5_opts(protocol_version, client_opts, open_opts, *slice_keys, &block)
-      v5_opts = slice_opts!(client_opts, *slice_keys)
+    def v5_opts(protocol_version, client_opts, open_opts, *slice_keys, prefix: nil, &block)
       if protocol_version == 5
+        v5_opts = slice_opts!(client_opts, *slice_keys, prefix:)
         open_opts.merge!(block.call(**v5_opts))
       else
-        MQTT::Logger.log.warn "Ignoring #{slice_keys.last} options for protocol version #{protocol_version}"
+        MQTT::Logger.log.warn "Ignoring #{prefix}* options for protocol version #{protocol_version}"
       end
     end
 
@@ -227,11 +228,8 @@ module MQTT
       send_maximum = nil if send_maximum == :__not_set__
       send_maximum = coerce_integer(send_maximum:) if send_maximum
 
-      policy = policy.call(**) if policy.respond_to?(:call)
-      policy = policy.new(**) if policy.is_a?(Class)
-
-      topic_aliases = topic_aliases.call(policy:, send_maximum:, **) if topic_aliases.respond_to?(:call)
-      topic_aliases = topic_aliases.new(policy:, send_maximum:, **) if topic_aliases.is_a?(Class)
+      policy = construct(policy, **)
+      topic_aliases = construct(topic_aliases, policy:, send_maximum:, **)
 
       { topic_aliases: topic_aliases, topic_alias_maximum: }.compact
     end

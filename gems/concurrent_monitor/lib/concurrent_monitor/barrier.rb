@@ -74,8 +74,9 @@ module ConcurrentMonitor
       return enum_for(:each).lazy unless block_given?
 
       each_task do |t|
-        v = t.value
-        yield v unless t.stopped?
+        yield t.value
+      rescue TaskStopped
+        # skip stopped tasks
       end
     end
 

@@ -69,7 +69,7 @@ module ConcurrentMonitor
                 _(barrier.size).must_equal(3)
                 _(-> { barrier.wait! }).must_raise(RuntimeError, 'Task error')
                 _(result).must_equal %i[task1]
-                _(sleeper.value).must_be_nil
+                _(-> { sleeper.value }).must_raise(ConcurrentMonitor::TaskStopped)
                 _(sleeper.stopped?).must_equal true
                 _(barrier.empty?).must_equal false # the stopped task is pending
                 barrier.wait # should not raise Stopped
@@ -129,7 +129,7 @@ module ConcurrentMonitor
                   # sleeper is still running
                   _(sleeper.alive?).must_equal(true)
                   barrier.stop
-                  _(sleeper.value || sleeper.stopped?).must_equal(true)
+                  _(sleeper.wait || sleeper.stopped?).must_equal(true)
                 end
               end
             end
@@ -186,7 +186,7 @@ module ConcurrentMonitor
                 next if yield barrier
 
                 barrier.stop
-                _(sleeper.value).must_be_nil
+                _(-> { sleeper.value }).must_raise(ConcurrentMonitor::TaskStopped)
                 _(sleeper.stopped?).must_equal(true)
               end
             end

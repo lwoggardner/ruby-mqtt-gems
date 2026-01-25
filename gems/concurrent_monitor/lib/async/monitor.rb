@@ -23,7 +23,12 @@ module Async
 
       def current? = @task.current?
 
-      def value = @task.wait
+      def value
+        result = @task.wait
+        raise ConcurrentMonitor::TaskStopped, 'Task was stopped' if @task.stopped?
+
+        result
+      end
 
       def stop
         raise Async::Stop if current?

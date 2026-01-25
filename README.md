@@ -186,7 +186,7 @@ sub = client.subscribe('topic1','topic2', 'prefix/#') # => #<MQTT::Client::Enume
 #### Subscription errors
 
 Default behaviour is to raise an exception if any topic filter in a `SUBSCRIBE` request
-is not fully accepted by the broker as indicated by the `.editorconfigSUBACK` response.
+is not fully accepted by the broker as indicated by the `SUBACK` response.
 
 {MQTT::Core::Client#subscribe} adds the options `:ignore_failed` and `:ignore_qos_limited` to control this 
 behaviour and {MQTT::Core::Client::Subscription#filter_status } can be used to interrogate the `SUBACK` response, eg for logging
@@ -437,23 +437,13 @@ MQTT.open('mqtt://mqtt.example.org') do |client|
 end
 ```
 
-
 ### V5 Specific Features ###
 
 #### Subscription Identifiers ####
 
-Generally a Subscription will check if any entry in its list of topic filter expressions matches the topic name
-provided in a received `PUBLISH` packet according to the MQTT protocol version in use.
-
-MQTT::V5 Subscription identifiers can also be used if supported by the server. In this case the Subscription will only
-match PUBLISH packets whose own list of subscription identifiers includes the value sent to `SUBSCRIBE`.
-PUBLISH
-```ruby
-client.subscribe('topic1', subscription_identifier: 99) do |topic, payload, **attrs|
-  attrs[:subscription_identifiers]&.include?(99) # => true (MQTT 5.0 only)
-  #...
-end
-```
+**WARNING**:  Clients must ensure there are no overlapping subscriptions for the same topic filter using different
+identifiers.  TODO: Feature to abstract this away (client code should enable identifiers, but the library should
+managed them)
 
 #### Topic Aliases ####
 
@@ -471,19 +461,41 @@ By default, a 'Least Recently Used' (LRU) policy is used to determine which alia
 
 See {MQTT::V5::TopicAlias} for details.
 
+#### Shared Subscriptions ####
+
+Topics filter expressions in the form of `$share/<group>/<topic filter>` will receive messages as though they
+were subscribed to `<topic filter>`.  Where multiple clients are subscribed in this way the broker will chose
+one of them to receive the message.
+
 #### V5 Request / Response
 
+Request/Response is a remote procedure call mechanism over MQTT. 
+
+A request is a PUBLISH message with `:response_topic` and `:correlation_data` properties.  A subscription listens
+on `:response_topic` for replies and uses `:correlation_data` to tie them back to the original request.
+
+The CONNECT property `:request_response_information` helps negotiate wa prefix for the response topic
+that is unique to the client session ({MQTT::V5::Client::Session#response_base).  Setting this property will
+automatically start a subscription to handle responses and enable use of {MQTT::V5::Client#request} 
 ```ruby
-# TODO: Incomplete
-# Subscription#get, #read can also be used to wait for one message at a time
-# eg simple request/response per MQTT 5.0
-response_topic = "my/api/v1/responses/#{my_uuid}"
-sub = client.subscribe(response_topic)
-_pub, ack = client.publish('my/api/v1/requests', invoke.to_json, qos: 1, response_topic:)
-raise 'no responder @ my/api/v1/requests' if ack.reason_code.code == 0x10
-JSON.parse(sub.read)
+# Request broker to negotiate a response topic prefix, and automatically subscribe to the response base topic prefix. 
+client.connect(request_response_information: true)
+
+# Then make requests...
+result = client.request('service/hello', 'world') # => 'Hello world'
 ```
 
+A response is a subscription that takes a message and publishes a result back to the received `:response_topic`,
+reflecting the `:correlation_data` property.
+
+This behaviour is encapsulated in {MQTT::V5::Client#response}
+```ruby
+client.response('service/hello') do |topic, request_payload|
+  "Hello #{request_payload}"
+end
+```
+
+Helpers to implement [JSON-RPC] over MQTT Request/Response are also available. See {MQTT::V5::Client::JsonRpc}
 
 ## Async Clients ##
 
@@ -587,3 +599,4 @@ Contact
 [MQTT URI]:       https://github.com/mqtt/mqtt.github.io/wiki/URI-Scheme
 [njh/ruby-mqtt]:  https://github.com/njh/ruby-mqtt
 [async]:          https://github.com/socketry/async
+[JSON-RPC]:       https://www.jsonrpc.org/specification

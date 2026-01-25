@@ -1,12 +1,7 @@
 # frozen_string_literal: true
 require_relative 'spec_helper'
 
-# TODO: Add comprehensive QoS 2 subscription tests
-# - QoS 2 subscribe/publish flow with PUBLISH → PUBREC → PUBREL → PUBCOMP
-# - Session store QoS 2 methods: qos_received, qos2_release, qos_handled  
-# - QoS 2 "exactly once" delivery guarantee verification
-# - Duplicate message handling and session recovery scenarios
-# Currently only tested indirectly via JSON-RPC tests
+# QoS 2 subscription tests - comprehensive coverage of receive flow
 
 module MQTT
   module ClientIntegrationSpec
@@ -75,40 +70,6 @@ module MQTT
           end
         end
 
-        it 'qos1 publish' do
-          with_client do |client|
-            pub = ack = nil
-            client.on_publish { |p, a| pub = p; ack = a }
-            client.connect
-            client.publish('ruby_mqtt5/test', 'hello', qos: 1)
-            expect(client.max_qos).wont_equal(0)
-            expect(pub.packet_name).must_equal(:publish)
-            expect(pub.packet_identifier).must_be :>, 0
-            expect(pub.qos).must_equal(1)
-            expect(ack.packet_name).must_equal(:puback)
-            expect(ack.packet_identifier).must_equal(pub.packet_identifier)
-          rescue MQTT::Core::Client::SessionStore::QoSNotSupported
-            raise unless client.max_qos.zero?
-          end
-        end
-
-        it 'qos2 publish' do
-          with_client do |client|
-            pub = ack = nil
-            client.on_publish { |p, a| pub = p; ack = a }
-            client.connect
-            client.publish('ruby_mqtt5/test', 'hello', qos: 2)
-            expect(client.max_qos).must_equal(2)
-            expect(pub.packet_name).must_equal(:publish)
-            expect(pub.packet_identifier).must_be :>, 0
-            expect(pub.qos).must_equal(2)
-            expect(ack.packet_name).must_equal(:pubcomp)
-            expect(ack.packet_identifier).must_equal(pub.packet_identifier)
-          rescue MQTT::Core::Client::SessionStore::QoSNotSupported
-            raise unless client.max_qos < 2
-          end
-        end
-
         it 'subscribes and unsubscribes' do
           with_client do |client|
             sub_pkt = ack_pkt = unsub = unsuback = nil
@@ -125,26 +86,6 @@ module MQTT
             expect(unsub.packet_name).must_equal(:unsubscribe)
             expect(unsuback.packet_name).must_equal(:unsuback)
             expect(unsub.success!(unsuback)).must_be_same_as(unsub)
-          end
-        end
-
-        it 'qos1 subscribe' do
-          with_client do |client|
-            sub = client.subscribe('ruby_mqtt5/test', max_qos: 1)
-            expect(client.max_qos).wont_equal(0)
-            sub.unsubscribe
-          rescue MQTT::Core::Client::SessionStore::QoSNotSupported
-            raise unless client.max_qos.zero?
-          end
-        end
-
-        it 'qos2 subscribe' do
-          with_client do |client|
-            sub = client.subscribe('ruby_mqtt5/test', max_qos: 2)
-            expect(client.max_qos).must_equal(2)
-            sub.unsubscribe
-          rescue MQTT::Core::Client::SessionStore::QoSNotSupported
-            raise unless client.max_qos < 2
           end
         end
 

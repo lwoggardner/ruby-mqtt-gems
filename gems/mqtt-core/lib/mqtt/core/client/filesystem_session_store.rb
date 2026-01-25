@@ -20,11 +20,11 @@ module MQTT
         #   zero is not permitted, but nil represents never expire (server may negotiate a lower value)
         def initialize(client_id:, expiry_interval:, base_dir: Dir.mktmpdir('mqtt'))
           @base_dir = Pathname.new(base_dir)
-          @client_dir = (base_dir + client_id)
+          @client_dir = (@base_dir + client_id)
           @disconnect_expiry_interval = nil # Default: don't change expiry on disconnect
           super(client_id:, expiry_interval:)
 
-          @session_expiry_file = (base_dir + "#{client_id}.expiry")
+          @session_expiry_file = (@base_dir + "#{client_id}.expiry")
           cleanup_tmp
           log.info { "client_dir: #{@client_dir}, clean?: #{clean?}" }
         end

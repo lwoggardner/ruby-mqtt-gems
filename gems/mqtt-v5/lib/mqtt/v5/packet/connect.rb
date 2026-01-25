@@ -3,6 +3,7 @@
 require_relative '../packet'
 require_relative '../version'
 require 'mqtt/core/packet/connect'
+require_relative 'payload'
 
 module MQTT
   module V5
@@ -16,6 +17,7 @@ module MQTT
       class Connect
         include Packet
         include Core::Packet::Connect
+        include Payload
 
         # Avoid name clashes between sub-properties
         def self.sub_property_method(name, property_name)
@@ -70,17 +72,25 @@ module MQTT
         # @!group Will Properties
 
         # @!attribute [r] will_payload_format_indicator
-        #   @return [Integer] payload format indicator for Will message: 0=bytes, 1=UTF-8 string
+        #  @return [Integer] 0 = unspecified binary, 1 = UTF-8 (managed automatically from payload encoding)
+        #  @see Payload#apply_payload_encoding
+
+        # @!attribute [r] will_content_type
+        #  @return [String<UTF8>] application indicator of payload content (managed automatically from payload encoding)
+        #  @see Payload#apply_payload_encoding
+
         # @!attribute [r] will_message_expiry_interval
         #   @return [Integer] Will message expiry interval in seconds
-        # @!attribute [r] will_content_type
-        #   @return [String<UTF8>] content type of the Will message payload
+
         # @!attribute [r] will_response_topic
         #   @return [String<UTF8>] topic name for response messages to the Will message
+
         # @!attribute [r] will_correlation_data
         #   @return [String<Binary>] correlation data for the Will message
+
         # @!attribute [r] will_delay_interval
         #   @return [Integer] Will delay interval in seconds
+
         # @!attribute [r] will_user_properties
         #   @return [Array<String, String>] user-defined properties for Will message as key-value pairs
 
@@ -88,14 +98,23 @@ module MQTT
 
         # @!attribute [r] client_id
         #   @return [String<UTF8>] client identifier string (managed from session store, default '')
+
         # @!attribute [r] will_topic
         #   @return [String<UTF8>] topic name to send the Will message to
+
         # @!attribute [r] will_payload
-        #   @return [String<Binary>] payload of the Will message
+        #  The message content (frozen)
+        #
+        #  For incoming packets, the {Payload#force_payload_encoding encoding} of the payload is automatically inferred
+        #  from {will_payload_format_indicator} and {will_content_type}.
+        #  @return [String]
+
         # @!attribute [r] will_properties
-        #   @return [Hash<Symbol>] properties for the Will message
+        #   @return [Hash<Symbol>] properties for the Will message (without the 'will_' prefix)
+
         # @!attribute [r] username
         #   @return [String<UTF8>] username for authenticating with the server
+
         # @!attribute [r] password
         #   @return [String<Binary>] password for authenticating with the server
 
@@ -137,22 +156,11 @@ module MQTT
         end
 
         # @!visibility private
-        def apply_data(data)
-          # Auto-set payload_format_indicator for UTF-8 will payloads before binary conversion
-          if data[:will_payload]&.encoding == Encoding::UTF_8
-            data[:will_properties] ||= {}
-            data[:will_properties][:payload_format_indicator] = 1
-          end
-          super
-        end
-
-        # @!visibility private
         def apply_overrides(data)
           super
-          data.merge!(
-            protocol_name: 'MQTT',
-            protocol_version: PROTOCOL_VERSION
-          )
+          data.merge!(protocol_name: 'MQTT', protocol_version: PROTOCOL_VERSION)
+
+          apply_payload_encoding(data[:will_properties] ||= {}, will_payload.encoding) if will_payload
         end
 
         # @!visibility private
@@ -160,8 +168,7 @@ module MQTT
           super
           return unless will_payload_format_indicator == 1
 
-          # Auto-encode will_payload as UTF-8 per MQTT 5.0 spec
-          will_payload.force_encoding(Encoding::UTF_8)
+          force_payload_encoding(will_payload, will_payload_format_indicator, will_content_type)
         end
 
         # @!visibility private

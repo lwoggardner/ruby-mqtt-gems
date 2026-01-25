@@ -132,7 +132,7 @@ module MQTT
 
       def_delegators :connection, :keep_alive, :connected?
 
-      def_delegators :session, :client_id, :expiry_interval, :max_qos
+      def_delegators :session, :client_id, :expiry_interval, :max_qos, :validate_qos!
 
       # @!visibility private
       def initialize(socket_factory:, monitor:, session_store:)
@@ -493,12 +493,16 @@ module MQTT
       def connection
         synchronize do
           run if @status == :configure
-          conn_cond.wait_while { @status == :disconnected }
-          raise ConnectionError, 'Stopped.', cause: @exception if @status == :stopped && @exception
+          conn_cond.wait_while { @status == :disconnected || (@stopping && @stopping != current_task) }
+
+          raise @exception if @status == :stopped && @exception
           raise ConnectionError, "Not connected. #{@status}" unless @status == :connected
-          raise ConnectionError, 'Disconnecting...' if @stopping && @stopping != current_task
 
           @connection
+        rescue StandardError => e
+          raise ConnectionError, e.message.to_s unless e.is_a?(ConnectionError)
+
+          raise
         end
       end
 

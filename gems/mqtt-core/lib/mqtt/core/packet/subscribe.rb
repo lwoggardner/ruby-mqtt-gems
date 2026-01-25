@@ -12,10 +12,7 @@ module MQTT
         #   @return [Boolean] treat failed topic_filters as successful - default (false)
 
         def defaults
-          {
-            ignore_failed: false,
-            ignore_qos_limited: false
-          }
+          { ignore_failed: false, ignore_qos_limited: false }
         end
 
         def apply_data(data)
@@ -23,7 +20,11 @@ module MQTT
           @ignore_qos_limited = data.delete(:ignore_qos_limited) if data.include?(:ignore_qos_limited)
 
           if data.include?(:topic_filters)
-            map_topic_filters(data[:topic_filters], data.delete(:max_qos) || data.delete(:requested_qos) || 0)
+            tf_defaults = self.class::TOPIC_FILTER_OPTIONS.each_with_object({}) do |k, d|
+              d[k] = data.delete(k) if data.include?(k)
+            end
+            max_qos = data.delete(:max_qos) || data.delete(:requested_qos) || 0
+            map_topic_filters(data[:topic_filters], max_qos, **tf_defaults)
           end
 
           super
@@ -148,12 +149,14 @@ module MQTT
 
         private
 
-        def map_topic_filters(topic_filters, max_qos)
+        def map_topic_filters(topic_filters, max_qos, **defaults)
           topic_filters.map! do |tf|
             (tf.is_a?(String) ? { topic_filter: tf } : tf).tap do |tf_hash|
               raise ArgumentError, 'topic filter must be a String or Hash<Symbol>' unless tf_hash.is_a?(Hash)
 
-              tf_hash[self.class::MAX_QOS_FIELD] = max_qos
+              tf_hash[self.class::MAX_QOS_FIELD] ||= max_qos
+              tf_hash.merge!(defaults) { |_k, from, _default| from }
+              tf_hash.compact!
             end
           end
         end

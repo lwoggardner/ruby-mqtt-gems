@@ -37,34 +37,62 @@ module ConcurrentMonitor
           end
         end
 
-        %i[wait join].each do |method|
-          describe "##{method}" do
-            it 'waits and returns self' do
-              sync do
-                result = nil
-                task = async(:join_test) do |task|
-                  result = :started
-                  _(task.current?).must_equal(true)
-                  sleep(0.2)
-                  _(current_task).must_equal(task)
-                  result = :done
-                end
-                sleep(0.05)
-                _(result).must_equal :started
-                _(task.public_send(method)).must_equal task
-                _(result).must_equal :done
+        describe '#wait' do
+          it 'waits and returns result' do
+            sync do
+              result = nil
+              task = async(:wait_test) do |task|
+                result = :started
+                _(task.current?).must_equal(true)
+                sleep(0.2)
+                _(current_task).must_equal(task)
+                result = :done
               end
+              sleep(0.05)
+              _(result).must_equal :started
+              _(task.wait).must_equal :done
+              _(result).must_equal :done
             end
+          end
 
-            it 'raises exception of the task' do
-              sync do
-                task = async(report_on_exception: false) do
-                  sleep(0.1)
-                  raise 'oops'
-                end
-
-                _(-> { task.public_send(method) }).must_raise('oops')
+          it 'raises exception of the task' do
+            sync do
+              task = async(report_on_exception: false) do
+                sleep(0.1)
+                raise 'oops'
               end
+
+              _(-> { task.wait }).must_raise('oops')
+            end
+          end
+        end
+
+        describe '#join' do
+          it 'waits and returns self' do
+            sync do
+              result = nil
+              task = async(:join_test) do |task|
+                result = :started
+                _(task.current?).must_equal(true)
+                sleep(0.2)
+                _(current_task).must_equal(task)
+                result = :done
+              end
+              sleep(0.05)
+              _(result).must_equal :started
+              _(task.join).must_equal task
+              _(result).must_equal :done
+            end
+          end
+
+          it 'raises exception of the task' do
+            sync do
+              task = async(report_on_exception: false) do
+                sleep(0.1)
+                raise 'oops'
+              end
+
+              _(-> { task.join }).must_raise('oops')
             end
           end
         end
@@ -80,7 +108,7 @@ module ConcurrentMonitor
               end
               sleep(0.05)
               task.stop
-              _(task.value).must_be_nil
+              _(-> { task.value }).must_raise(ConcurrentMonitor::TaskStopped)
               _(task.stopped?).must_equal(true)
               _(result).must_equal(:started)
               task.stop
@@ -94,8 +122,8 @@ module ConcurrentMonitor
                 task.stop
               end
               _(task.stopped?).must_equal(false) # not stopped? until value called
-              _(task.value).must_be_nil
-              _(task.join).must_equal(task)
+              _(-> { task.value }).must_raise(ConcurrentMonitor::TaskStopped)
+              _(-> { task.join }).must_raise(ConcurrentMonitor::TaskStopped)
               _(task.stopped?).must_equal(true)
             end
           end

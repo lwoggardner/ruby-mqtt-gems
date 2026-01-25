@@ -14,7 +14,7 @@ module MQTT
                 topic = "rpc/calculator"
                 
                 # Set up JSON-RPC responder
-                server_client.json_rpc_service(topic) do |method, *args, **kwargs|
+                server_client.json_rpc_service(topic) do |request_opts, response_opts, id, method, *args, **kwargs|
                   case method
                   when 'add' then args.sum
                   when 'multiply' then args.reduce(:*)
@@ -30,15 +30,15 @@ module MQTT
                   calc = client_client.json_rpc_endpoint(topic)
                   
                   # Test positional arguments
-                  result = calc.add(5, 10, rpc_timeout: 2)
+                  result = calc.with(timeout: 2).add(5, 10)
                   _(result).must_equal(15)
                   
                   # Test named arguments  
-                  result = calc.greet(name: 'World', rpc_timeout: 2)
+                  result = calc.with(timeout: 2).greet(name: 'World')
                   _(result).must_equal('Hello, World!')
                   
                   # Test method not found
-                  _(proc { calc.unknown_method(timeout: 1) }).must_raise(NoMethodError)
+                  _(proc { calc.with(timeout: 1).unknown_method }).must_raise(NoMethodError)
                 end
               end
             end
@@ -49,7 +49,7 @@ module MQTT
                 topic = "rpc/logger/#{rand(10000)}"  # Unique topic per test
                 
                 received_logs = []
-                server_client.json_rpc_service(topic) do |method, *args, **kwargs|
+                server_client.json_rpc_service(topic) do |request_opts, response_opts, id, method, *args, **kwargs|
                   received_logs << { method: method, args: args, kwargs: kwargs }
                   nil # No response for notifications
                 end
@@ -60,7 +60,7 @@ module MQTT
                   logger = client_client.json_rpc_endpoint(topic)
                   
                   # Send notification (no response expected)
-                  logger.log(message: 'test message', level: 'info', rpc_notify: true)
+                  logger.log!(message: 'test message', level: 'info')
                   
                   # Give it time to process
                   sleep 0.1
@@ -68,7 +68,7 @@ module MQTT
                   _(received_logs.size).must_equal(1)
                   _(received_logs.first[:method]).must_equal('log')
                   _(received_logs.first[:args]).must_equal([])
-                  _(received_logs.first[:kwargs].reject { |k, _| k.to_s.start_with?('rpc_') }).must_equal({ message: 'test message', level: 'info' })
+                  _(received_logs.first[:kwargs]).must_equal({ message: 'test message', level: 'info' })
                 end
               end
             end
@@ -78,7 +78,7 @@ module MQTT
                 server_client.connect(request_response_information: true)
                 topic = "rpc/slow_service"
                 
-                server_client.json_rpc_service(topic) do |method, *args, **kwargs|
+                server_client.json_rpc_service(topic) do |request_opts, response_opts, id, method, *args, **kwargs|
                   case method
                   when 'slowAdd'
                     sleep 0.1  # Simulate slow operation
@@ -93,11 +93,14 @@ module MQTT
                   
                   # Start multiple requests concurrently
                   futures = 3.times.map do |i|
-                    service.json_rpc_invoke('slowAdd', i, i + 1, rpc_async: true)
+                    service.json_rpc_async(:next_id, :slowAdd, i, i + 1)
                   end
                   
                   # Collect results
-                  results = futures.map { |f| f.value(timeout: 2) }
+                  results = futures.map do |f|
+                    f.wait(timeout: 2)
+                    f.value
+                  end
                   
                   _(results).must_equal([1, 3, 5])  # 0+1, 1+2, 2+3
                 end
@@ -112,9 +115,9 @@ module MQTT
                 # Use the minimum of client max QoS and 2
                 qos = [server_client.max_qos, 2].min
                 
-                server_client.json_rpc_service(topic, pub_qos: qos) do |method, *args, **kwargs|
+                server_client.json_rpc_service(topic, pub_opts: { qos: qos }) do |request_opts, response_opts, id, method, *args, **kwargs|
                   case method
-                  when 'criticalOperation' then "success: #{kwargs.reject { |k, _| k.to_s.start_with?('rpc_') }.values.join(',')}"
+                  when 'criticalOperation' then "success: #{kwargs.values.join(',')}"
                   end
                 end
                 
@@ -122,10 +125,10 @@ module MQTT
                   client_client.connect(request_response_information: true)
                   
                   # Create context with appropriate QoS
-                  ctx = client_client.new_request_context('critical', pub_qos: qos)
-                  service = ctx.json_rpc_endpoint(topic, qos: qos)
+                  ctx = client_client.new_request_context('critical', pub_opts: { qos: qos })
+                  service = ctx.json_rpc_endpoint(topic, mqtt_qos: qos)
                   
-                  result = service.critical_operation(data1: 'test', data2: 'data', rpc_timeout: 10)
+                  result = service.with(timeout: 10).critical_operation(data1: 'test', data2: 'data')
                   _(result).must_equal('success: test,data')
                 end
               end
@@ -136,7 +139,7 @@ module MQTT
                 server_client.connect(request_response_information: true)
                 topic = "rpc/error_service"
                 
-                server_client.json_rpc_service(topic) do |method, *args, **kwargs|
+                server_client.json_rpc_service(topic) do |request_opts, response_opts, id, method, *args, **kwargs|
                   case method
                   when 'divide'
                     raise ArgumentError, "Division by zero" if args[1] == 0
@@ -152,10 +155,10 @@ module MQTT
                   service = client_client.json_rpc_endpoint(topic)
                   
                   # Test ArgumentError mapping
-                  _(proc { service.divide(10, 0, rpc_timeout: 1) }).must_raise(ArgumentError)
+                  _(proc { service.with(timeout: 1).divide(10, 0) }).must_raise(ArgumentError)
                   
                   # Test custom JSON-RPC error
-                  error = _(proc { service.custom_error(rpc_timeout: 1) }).must_raise(JsonRpcKit::Error)
+                  error = _(proc { service.with(timeout: 1).custom_error }).must_raise(JsonRpcKit::Error)
                   _(error.code).must_equal(-1000)
                   _(error.data).must_equal({ extra: 'info' })
                 end
@@ -168,4 +171,4 @@ module MQTT
   end
 end
 
-MQTT::V5::SpecHelper.client_spec(MQTT::V5::JsonRpcSpec)
+MQTT::SpecHelper.client_spec(MQTT::V5::JsonRpcSpec, protocol_version: 5)

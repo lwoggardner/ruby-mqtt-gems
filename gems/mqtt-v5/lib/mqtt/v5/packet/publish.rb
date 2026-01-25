@@ -2,6 +2,7 @@
 
 require_relative '../packet'
 require 'mqtt/core/packet/publish'
+require_relative 'payload'
 
 module MQTT
   module V5
@@ -15,6 +16,7 @@ module MQTT
       class Publish
         include Packet
         include Core::Packet::Publish
+        include Payload
 
         # @!attribute [r] dup
         #   @return [Boolean] duplicate delivery flag (managed automatically by session)
@@ -30,19 +32,27 @@ module MQTT
         # @!group Properties
 
         # @!attribute [r] payload_format_indicator
-        #   @return [Integer] 0 = unspecified, 1 = UTF-8 encoded payload (auto-detected from payload encoding)
+        #  @return [Integer] 0 = unspecified binary, 1 = UTF-8 (managed automatically from payload encoding)
+        #  @see Payload#apply_payload_encoding
+
+        # @!attribute [r] content_type
+        #  @return [String<UTF8>] application indicator of payload content (managed automatically from payload encoding)
+        #  @see Payload#apply_payload_encoding
+
         # @!attribute [r] message_expiry_interval
         #   @return [Integer] message expiry interval in seconds
+
         # @!attribute [r] response_topic
         #   @return [String<UTF8>] topic name for response messages
+
         # @!attribute [r] correlation_data
         #   @return [String<Binary>] correlation data for request/response
+
         # @!attribute [r] user_properties
         #   @return [Array<String, String>] user-defined properties as key-value pairs
+
         # @!attribute [r] subscription_identifiers
         #   @return [Array<Integer>] subscription identifiers (receive only, set by broker)
-        # @!attribute [r] content_type
-        #   @return [String<UTF8>] content type description
 
         variable(
           topic_name: :utf8string,
@@ -83,7 +93,11 @@ module MQTT
         alias topic topic_name
 
         # @!attribute [r] payload
-        #   @return [String<Binary>] message payload
+        #  The message content (frozen)
+        #
+        #  For incoming packets the {Payload#force_payload_encoding encoding} of the payload is
+        #  automatically inferred from {payload_format_indicator} and {content_type}.
+        #  @return [String]
         payload(payload: :remaining)
 
         # @!visibility private
@@ -108,19 +122,15 @@ module MQTT
         # @!visibility private
         def apply_overrides(data)
           super
-          return unless payload&.encoding == Encoding::UTF_8
 
-          data[:properties] ||= {}
-          data[:properties][:payload_format_indicator] = 1
+          apply_payload_encoding(data[:properties] ||= {}, payload.encoding) if payload
         end
 
         # @!visibility private
         def deserialize(header_byte, io)
           super
-          return unless payload_format_indicator == 1
 
-          # Auto-encode payload as UTF-8 per MQTT 5.0 spec
-          payload.force_encoding(Encoding::UTF_8)
+          force_payload_encoding(payload, payload_format_indicator, content_type)
         end
 
         # Attributes provided to {Core::Client::EnumerableSubscription}
@@ -129,7 +139,7 @@ module MQTT
 
         # Provides packet as topic, payload and a map of attributes (See {MESSAGE_ATTRIBUTES})
         # @yield [topic,payload,**attributes]
-        # @return [Array<String, String, Hash>] topic, payload, **attributes when no block given
+        # @return [[String, String, Hash]] topic, payload, **attributes when no block given
         # @return [Object] block result when block given
         def deconstruct_message(&)
           super(*MESSAGE_ATTRIBUTES, &)

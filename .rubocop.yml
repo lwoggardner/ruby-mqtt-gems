@@ -36,3 +36,6 @@ Metrics/BlockLength:
     - 'Rakefile'
     - '**/*.rake'
 
+# Yard handles DataInheritance much better
+Style/DataInheritance:
+  Enabled: false

@@ -25,4 +25,4 @@ module MQTT
   end
 end
 
-MQTT::V5::SpecHelper.client_spec(MQTT::V5::SubscriptionIdentifierSpec)
+MQTT::SpecHelper.client_spec(MQTT::V5::SubscriptionIdentifierSpec, protocol_version: 5)

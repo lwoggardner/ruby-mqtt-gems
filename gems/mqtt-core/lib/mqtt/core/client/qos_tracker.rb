@@ -106,6 +106,8 @@ module MQTT
 
         private
 
+        attr_reader :qos_packets
+
         # These are unhandled QoS 1/2 packets, mapped to their unique id (timestamps)
         # @return [Array<Packet>] the list of unhandled packets to send to subscriptions as they connect
         def qos_load(&)
