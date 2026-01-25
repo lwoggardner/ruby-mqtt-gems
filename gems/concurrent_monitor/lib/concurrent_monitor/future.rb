@@ -11,7 +11,8 @@ module ConcurrentMonitor
       @error = nil
     end
 
-    # Blocks until the future is completed or the timeout expires
+    # Blocks until the future is completed, then returns its value or raises its error.
+    #
     # @return [Object] The value with which the future was fulfilled
     # @raise [StandardError] If the future was rejected
     def value
@@ -21,8 +22,13 @@ module ConcurrentMonitor
       @value
     end
 
-    def wait(timeout = nil, **wait_opts)
-      synchronize { condition.wait_until(timeout, **wait_opts) { @completed } }
+    # Wait until completed
+    # @overload wait(timeout, exception: nil)
+    #  @param timeout [Numeric|nil]
+    #  @param exception [Class<StandardError>]an error to raise if timeout
+    #  @return [Boolean] true if completed, nil or raises exception if timed out
+    def wait(timeout_arg = nil, timeout: timeout_arg, exception: nil)
+      synchronize { condition.wait_until(timeout, exception:) { @completed } }
     end
 
     # Resolve the future with a block
@@ -41,6 +47,11 @@ module ConcurrentMonitor
       complete! { @value = value }
     end
 
+    # @return [Boolean] true if completed with a value, otherwise false
+    def fulfilled?
+      completed? && !@error
+    end
+
     # Rejects this future with the given error
     # @param error [Exception] The error to reject this future with
     # @return [Boolean] true if the future was rejected, false if already completed
@@ -49,10 +60,17 @@ module ConcurrentMonitor
       complete! { @error = error }
     end
 
+    # @return [Boolean] false if not complete or completed with a value
+    # @return [StandardError] if completed with an error
+    def rejected?
+      completed? && @error
+    end
+
     # @return [Boolean] true if this future has been completed
     def completed?
       synchronize { @completed }
     end
+    alias resolved? completed?
 
     # @return [Boolean] true if this future has not yet been completed
     def pending?

@@ -1,6 +1,8 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require 'bundler/setup'
+
 require 'rake'
 require 'rake/clean'
 require 'fileutils'
@@ -16,14 +18,6 @@ RuboCop::RakeTask.new
 require 'yard'
 
 require 'rake/testtask'
-
-# Top-level test task for specs in spec/
-Rake::TestTask.new(:test) do |t|
-  t.libs << 'lib'
-  t.libs << 'spec'
-  t.test_files = FileList['spec/**/*_spec.rb'].exclude('spec/stashed/**/*')
-  t.warning = false
-end
 
 # YARD documentation for all gems
 CLOBBER.include('doc')
@@ -90,20 +84,6 @@ namespace :gems do
   end
 end
 
-# Task to run all tests (top-level + all gems) with aggregate reporting
-desc 'Run all tests (top-level and all gems)'
-Rake::TestTask.new(:test_all) do |t|
-  t.libs << 'lib'
-  t.libs << 'spec'
-  gem_directories.each do |gem_dir|
-    t.libs << "#{gem_dir}/lib"
-    t.libs << "#{gem_dir}/spec"
-  end
-  t.test_files = FileList['spec/**/*_spec.rb'].exclude('spec/stashed/**/*') +
-                 gem_directories.flat_map { |gem_dir| FileList["#{gem_dir}/spec/**/*_spec.rb"] }
-  t.warning = false
-end
-
 # Broker management tasks
 namespace :broker do
   desc 'Start mosquitto broker in Docker (stable profile)'
@@ -162,14 +142,41 @@ namespace :test do
   desc 'Run tests with broker (starts broker, runs tests, stops broker)'
   task :with_broker do
     Rake::Task['broker:start'].invoke
-    Rake::Task[:test_all].invoke
+    Rake::Task['test:all'].invoke
   ensure
     Rake::Task['broker:stop'].invoke
   end
 
-  desc 'Run tests assuming broker is already running'
-  task local: :test_all
+  desc 'Use spec reporter (use with another test task)'
+  task :use_spec_reporter do
+    ENV['MINITEST_REPORTER'] = 'SpecReporter'
+  end
+
+  # Task to run all tests (top-level + all gems) with aggregate reporting
+  desc 'Run all tests (project root and all gems)'
+  Rake::TestTask.new(:all) do |t|
+    t.libs << 'lib'
+    t.libs << 'spec'
+    gem_directories.each do |gem_dir|
+      t.libs << "#{gem_dir}/lib"
+      t.libs << "#{gem_dir}/spec"
+    end
+    t.test_files = FileList['spec/**/*_spec.rb'].exclude('spec/stashed/**/*') +
+                   gem_directories.flat_map { |gem_dir| FileList["#{gem_dir}/spec/**/*_spec.rb"] }
+    t.warning = false
+  end
+
+  desc 'Run tests from the project root only'
+  Rake::TestTask.new(:root_only) do |t|
+    t.libs << 'lib'
+    t.libs << 'spec'
+    t.test_files = FileList['spec/**/*_spec.rb'].exclude('spec/stashed/**/*')
+    t.warning = false
+  end
 end
+
+desc 'Run all tests'
+task test: ['test:all']
 
 # For now ConcurrentMonitor version is aligned with MQTT version
 VERSION_FILES = %w[
@@ -222,4 +229,4 @@ namespace :version do
   end
 end
 
-task default: %i[rubocop yard test:with_broker]
+task default: %i[rubocop yard test:use_spec_reporter test:with_broker]

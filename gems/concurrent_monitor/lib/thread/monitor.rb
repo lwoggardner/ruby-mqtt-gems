@@ -10,7 +10,7 @@ class Thread
   class Monitor
     # rubocop:disable Lint/InheritException
 
-    # Raised from when a task is stopped
+    # Raised from stop when a task is stopped
     class Stop < Exception; end
 
     # rubocop:enable Lint/InheritException
@@ -23,7 +23,7 @@ class Thread
     # @!visibility private
     # Common task interface over Thread
     class Task < ConcurrentMonitor::Task
-      def initialize(name = nil, report_on_exception: true, &block)
+      def initialize(name_arg = nil, name: name_arg, report_on_exception: true, &block)
         super()
         @stopped = nil
         @thread = Thread.new(self, name, report_on_exception, block) do |t, n, e, b|
@@ -41,12 +41,13 @@ class Thread
       def current? = @thread == Thread.current
 
       def value
-        return nil if @stopped
+        result = @thread.value
+        raise ConcurrentMonitor::TaskStopped, 'Task was stopped' if @stopped
 
-        @thread.value
+        result
       rescue Stop
         @stopped = true
-        nil
+        raise ConcurrentMonitor::TaskStopped, 'Task was stopped'
       end
 
       def stop
@@ -58,7 +59,7 @@ class Thread
         self # race with alive?
       end
 
-      # must call join or value before @stopped will be true
+      # must call wait before @stopped will be true
       def stopped?
         !!@stopped
       end

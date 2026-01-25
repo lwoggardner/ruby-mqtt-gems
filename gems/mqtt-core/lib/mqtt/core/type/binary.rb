@@ -16,14 +16,15 @@ module MQTT
 
         def write(value, io)
           value ||= default_value
-          io.write([value.size, value].pack('S>A*'))
+          binary_value = value.b
+          io.write([binary_value.size, binary_value].pack('S>A*'))
         end
 
-        # @return [String(binary)]
+        # @return [String] - preserves encoding from input
         def from(value, **)
           return nil if value.nil?
 
-          value.to_s.b
+          value.to_s
         end
 
         def default_value

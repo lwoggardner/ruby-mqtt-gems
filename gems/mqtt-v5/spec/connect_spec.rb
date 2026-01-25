@@ -99,4 +99,186 @@ describe 'MQTT::V5::Packet::Connect' do
       _(-> { packet_class.new(will_topic: '', will_payload: 'test') }).must_raise ArgumentError
     end
   end
+
+  describe 'will_payload_format_indicator' do
+    it 'auto-sets will_payload_format_indicator=1 for UTF-8 will payloads on outgoing packets' do
+      packet = packet_class.new(
+        will_topic: 'last/will',
+        will_payload: 'goodbye world 🌍'
+      )
+      
+      _(packet.will_payload.encoding).must_equal Encoding::UTF_8  # Preserves original encoding
+      _(packet.will_payload_format_indicator).must_equal 1
+    end
+
+    it 'does not set will_payload_format_indicator for binary will payloads on outgoing packets' do
+      packet = packet_class.new(
+        will_topic: 'last/will',
+        will_payload: "\x00\x01\x02\x03".b
+      )
+      
+      _(packet.will_payload.encoding).must_equal Encoding::ASCII_8BIT
+      _(packet.will_payload_format_indicator).must_be_nil
+    end
+
+    it 'auto-encodes will_payload to UTF-8 when will_payload_format_indicator=1 on incoming packets' do
+      # Create packet with UTF-8 will payload and pfi=1
+      original = packet_class.new(
+        will_topic: 'last/will',
+        will_payload: 'goodbye world 🌍',
+        will_properties: { payload_format_indicator: 1 }
+      )
+      
+      # Serialize and deserialize (simulating broker processing)
+      io = StringIO.new
+      original.serialize(io)
+      io.rewind
+      
+      deserialized = MQTT::V5::Packet.deserialize(io)
+      
+      _(deserialized.will_payload).must_equal 'goodbye world 🌍'
+      _(deserialized.will_payload.encoding).must_equal Encoding::UTF_8
+      _(deserialized.will_payload_format_indicator).must_equal 1
+    end
+
+    it 'preserves binary encoding when will_payload_format_indicator=0 on incoming packets' do
+      # Create packet with binary will payload and pfi=0
+      original = packet_class.new(
+        will_topic: 'last/will',
+        will_payload: "\x00\x01\x02\x03".b,
+        will_properties: { payload_format_indicator: 0 }
+      )
+      
+      # Serialize and deserialize (simulating broker processing)
+      io = StringIO.new
+      original.serialize(io)
+      io.rewind
+      
+      deserialized = MQTT::V5::Packet.deserialize(io)
+      
+      _(deserialized.will_payload).must_equal "\x00\x01\x02\x03".b
+      _(deserialized.will_payload.encoding).must_equal Encoding::ASCII_8BIT
+      _(deserialized.will_payload_format_indicator).must_equal 0
+    end
+
+    it 'handles invalid UTF-8 gracefully when will_payload_format_indicator=1' do
+      # Per MQTT 5.0 spec section 5.4.9, validation is optional to avoid weaponization
+      # Create packet with invalid UTF-8 bytes but pfi=1
+      original = packet_class.new(
+        will_topic: 'last/will',
+        will_payload: "\xFF\xFE".b,
+        will_properties: { payload_format_indicator: 1 }
+      )
+      
+      # Serialize and deserialize (simulating broker processing)
+      io = StringIO.new
+      original.serialize(io)
+      io.rewind
+      
+      deserialized = MQTT::V5::Packet.deserialize(io)
+      
+      _(deserialized.will_payload).must_equal "\xFF\xFE"
+      _(deserialized.will_payload.encoding).must_equal Encoding::UTF_8
+      _(deserialized.will_payload.valid_encoding?).must_equal false
+      _(deserialized.will_payload_format_indicator).must_equal 1
+    end
+  end
+
+  describe 'will properties input methods' do
+    it 'supports direct will property arguments' do
+      packet = packet_class.new(
+        will_topic: 'test/topic',
+        will_payload: 'hello world',
+        will_content_type: 'application/json',
+        will_message_expiry_interval: 3600,
+        will_response_topic: 'response/topic',
+        will_correlation_data: 'correlation123',
+        will_delay_interval: 30
+      )
+      
+      _(packet.will_content_type).must_equal 'application/json'
+      _(packet.will_message_expiry_interval).must_equal 3600
+      _(packet.will_response_topic).must_equal 'response/topic'
+      _(packet.will_correlation_data).must_equal 'correlation123'
+      _(packet.will_delay_interval).must_equal 30
+    end
+
+    it 'supports will_properties hash input' do
+      packet = packet_class.new(
+        will_topic: 'test/topic',
+        will_payload: 'hello world',
+        will_properties: {
+          content_type: 'text/plain',
+          message_expiry_interval: 1800,
+          response_topic: 'other/topic',
+          correlation_data: 'other123',
+          will_delay_interval: 60
+        }
+      )
+      
+      _(packet.will_content_type).must_equal 'text/plain'
+      _(packet.will_message_expiry_interval).must_equal 1800
+      _(packet.will_response_topic).must_equal 'other/topic'
+      _(packet.will_correlation_data).must_equal 'other123'
+      _(packet.will_delay_interval).must_equal 60
+    end
+
+    it 'preserves direct will properties through serialization' do
+      original = packet_class.new(
+        will_topic: 'test/topic',
+        will_payload: 'hello world',
+        will_content_type: 'application/json',
+        will_message_expiry_interval: 3600
+      )
+      
+      io = StringIO.new
+      original.serialize(io)
+      io.rewind
+      deserialized = MQTT::V5::Packet.deserialize(io)
+      
+      _(deserialized.will_content_type).must_equal 'application/json'
+      _(deserialized.will_message_expiry_interval).must_equal 3600
+    end
+
+    it 'preserves will_properties hash through serialization' do
+      original = packet_class.new(
+        will_topic: 'test/topic',
+        will_payload: 'hello world',
+        will_properties: {
+          content_type: 'text/plain',
+          message_expiry_interval: 1800
+        }
+      )
+      
+      io = StringIO.new
+      original.serialize(io)
+      io.rewind
+      deserialized = MQTT::V5::Packet.deserialize(io)
+      
+      _(deserialized.will_content_type).must_equal 'text/plain'
+      _(deserialized.will_message_expiry_interval).must_equal 1800
+    end
+
+    it 'will_properties method returns hash with keys without prefix' do
+      packet = packet_class.new(
+        will_topic: 'test/topic',
+        will_payload: 'hello world',
+        will_content_type: 'application/json',
+        will_message_expiry_interval: 3600,
+        will_response_topic: 'response/topic'
+      )
+      
+      will_props = packet.will_properties
+      _(will_props[:content_type]).must_equal 'application/json'
+      _(will_props[:message_expiry_interval]).must_equal 3600
+      _(will_props[:response_topic]).must_equal 'response/topic'
+      _(will_props[:payload_format_indicator]).must_equal 1  # auto-set for UTF-8
+      
+      # Keys should NOT have will_ prefix
+      _(will_props.keys).must_include :content_type
+      _(will_props.keys).must_include :message_expiry_interval
+      _(will_props.keys).wont_include :will_content_type
+      _(will_props.keys).wont_include :will_message_expiry_interval
+    end
+  end
 end

@@ -2,10 +2,15 @@
 
 require 'minitest/autorun'
 require 'minitest/reporters'
-Minitest::Reporters.use! Minitest::Reporters::SpecReporter.new unless ENV.include?('RM_INFO')
+require 'minitest/mock'
+
+Minitest.load_plugins
+
+ENV['MINITEST_REPORTER'] ||= 'DefaultReporter'
+Minitest::Reporters.use! unless ENV.include?('RM_INFO') || Minitest::Reporters.reporters&.any?
 
 require 'mqtt/core'
-MQTT::Logger.log.fatal!
+MQTT::Logger.log.public_send(ENV['DEBUG'] ? :debug! : :fatal!)
 
 # keyword each for test generation
 module Enumerable
@@ -23,14 +28,18 @@ module MQTT
         require_relative "shared/#{name}"
       end
 
-      def with_client_classes(&block)
-        [
+      def with_client_classes(protocol_version: nil, &block)
+        clients = [
           { protocol: 5, async: false, class_name: 'MQTT::V5::Client', skip: false },
           { protocol: 5, async: true, class_name: 'MQTT::V5::Async::Client', skip: false },
           { protocol: 3, async: false, class_name: 'MQTT::V3::Client', skip: false },
           { protocol: 3, async: true, class_name: 'MQTT::V3::Async::Client', skip: false }
-        ].reject { |opts| opts[:skip] }
-          .kw_each do |class_name:, protocol:, async:, **|
+        ]
+        
+        clients = clients.select { |c| c[:protocol] == protocol_version } if protocol_version
+        
+        clients.reject { |opts| opts[:skip] }
+               .kw_each do |class_name:, protocol:, async:, **|
           require "mqtt/v#{protocol}"
           require "mqtt/v#{protocol}/async/client" if async
           describe class_name do
@@ -47,16 +56,18 @@ module MQTT
         klass.file_store(base_dir: persistent_dir, expiry_interval: nil, client_id: klass.generate_client_id)
       end
 
-      def with_session_stores(&block)
+      def with_session_stores(min_qos: 0, &block)
         persistent_dir = Pathname.new(Dir.mktmpdir)
         Minitest.after_run { persistent_dir.rmtree }
 
-        [
-          { ss: 'MemoryStore', ss_proc: ->(klass) { klass.memory_store }, skip: false },
-          { ss: 'QoS0Store', ss_proc: ->(klass) { klass.qos0_store }, skip: false },
-          { ss: 'FileStore', ss_proc: ->(klass) { file_store(klass, persistent_dir) }, skip: false }
-        ].reject { |opts| opts[:skip] }
-          .kw_each do |ss:, ss_proc:, **|
+        stores = [
+          { ss: 'MemoryStore', ss_proc: ->(klass) { klass.memory_store }, max_qos: 2 },
+          { ss: 'QoS0Store', ss_proc: ->(klass) { klass.qos0_store }, max_qos: 0 },
+          { ss: 'FileStore', ss_proc: ->(klass) { file_store(klass, persistent_dir) }, max_qos: 2 }
+        ]
+        
+        stores.select { |store| store[:max_qos] >= min_qos }
+              .kw_each do |ss:, ss_proc:, **|
           describe "with #{ss}" do
             let(:session_store) { ss_proc.call(MQTT::Core::Client) }
             instance_eval(&block)
@@ -82,12 +93,12 @@ module MQTT
         end
       end
 
-      def client_spec(*specs)
+      def client_spec(*specs, min_qos: 0, protocol_version: nil)
         this = self
         with_brokers do
-          parallelize_me!
-          this.with_session_stores do
-            this.with_client_classes do
+          parallelize_me! unless MQTT::Logger.log.debug?
+          this.with_session_stores(min_qos: min_qos) do
+            this.with_client_classes(protocol_version: protocol_version) do
               include(*specs)
             end
           end
@@ -113,6 +124,13 @@ end
 
 def with_client(**opts, &)
   MQTT.open(uri, **client_class_opts, **opts, &)
+rescue MQTT::ConnectionError => e
+  if e.cause
+    puts "Rescued: #{e.class.name}: #{e.message}. Raising cause"
+    raise e.cause
+  end
+
+  raise
 end
 
 def wait_until(timeout = 5, delay: 0.2, &block)

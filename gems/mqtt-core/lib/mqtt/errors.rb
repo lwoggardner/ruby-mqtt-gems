@@ -22,6 +22,9 @@ module MQTT
   # Raised in the disconnect handler when the client session has expired before it can reconnect to the broker.
   class SessionExpired < Error; end
 
+  # Base timeout error can be used from application scenarios (eg request/response)
+  class TimeoutError < Error; end
+
   # A ResponseError will be raised from packet acknowledgements
   class ResponseError < Error; end
 

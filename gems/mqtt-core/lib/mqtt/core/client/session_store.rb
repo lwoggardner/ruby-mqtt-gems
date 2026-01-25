@@ -52,7 +52,7 @@ module MQTT
         end
 
         def validate_qos!(requested_qos)
-          return if requested_qos <= max_qos
+          return requested_qos if requested_qos <= max_qos
 
           raise QoSNotSupported, "QoS #{requested_qos} is not supported by #{self.class}"
         end
@@ -121,6 +121,12 @@ module MQTT
           end
 
           @expiry_interval = expiry_interval
+        end
+
+        # @return [Integer|nil] session expiry interval to use in DISCONNECT packet
+        # nil means don't include the property (keep current server-side expiry)
+        def disconnect_expiry_interval
+          nil # Default: don't change expiry interval on disconnect
         end
       end
     end

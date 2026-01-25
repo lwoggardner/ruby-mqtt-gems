@@ -5,12 +5,13 @@ module MQTT
     module Packet
       # Common processing of PUBLISH packets between MQTT versions
       module Publish
-        # Deconstruct message for subscription enumeration
-        # @yield [topic, payload, attributes] optional block to yield deconstructed values
+        # @abstract
+        # @yield [topic, payload, **attributes] optional block to yield deconstructed values
         # @return [Array<String, String, Hash>] topic, payload, attributes when no block given
         # @return [Object] block result when block given
-        def deconstruct_message(&)
-          block_given? ? yield(topic, payload, **to_h) : [topic, payload, to_h]
+        def deconstruct_message(*attributes, &)
+          attrs = attributes.to_h { |attr| [attr, send(attr)] }.compact
+          block_given? ? yield(topic, payload, **attrs) : [topic, payload, attrs]
         end
 
         def to_s
@@ -27,6 +28,11 @@ module MQTT
         # @!visibility private
         def topic_alias
           nil
+        end
+
+        # @!visibility private
+        def defaults
+          super.merge!(qos: 0)
         end
 
         # @!visibility private

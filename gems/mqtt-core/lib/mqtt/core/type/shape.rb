@@ -137,9 +137,7 @@ module MQTT
             if f.type.respond_to?(:sub_properties)
               result = @data[f.name] ||= {}
               result.merge!(data.delete(f.name)) if data.key?(f.name)
-              f.type.sub_properties.each do |property_name, property_type|
-                result[property_name] = property_type.from(data.delete(property_name)) if data.key?(property_name)
-              end
+              apply_sub_properties(f, result, data)
             elsif data.key?(f.name)
               @data[f.name] = f.type.from(data.delete(f.name))
             end
@@ -147,6 +145,18 @@ module MQTT
           raise ArgumentError, "Unused data for #{self.class.name} - #{data}" unless data.empty?
         end
         # rubocop:enable Metrics/AbcSize
+
+        def apply_sub_properties(field, result, data)
+          field.type.sub_properties.each do |property_name, property_type|
+            check_name =
+              if self.class.respond_to?(:sub_property_method)
+                self.class.sub_property_method(field.name, property_name)
+              else
+                property_name
+              end
+            result[property_name] = property_type.from(data.delete(check_name)) if data.key?(check_name)
+          end
+        end
 
         # applied in the same way as user supplied data
         def defaults

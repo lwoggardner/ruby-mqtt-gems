@@ -32,6 +32,9 @@ module MQTT
         #   @return [Array<TopicFilter>] list of topic filters to subscribe to
 
         variable(packet_identifier: :int16)
+
+        TOPIC_FILTER_OPTIONS = [].freeze
+
         payload(
           topic_filters: list(
             :topic_filter,

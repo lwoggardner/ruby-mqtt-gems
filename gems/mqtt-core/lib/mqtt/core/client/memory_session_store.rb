@@ -39,6 +39,10 @@ module MQTT
           @clean
         end
 
+        def disconnect_expiry_interval
+          0  # Memory sessions don't survive disconnect anyway
+        end
+
         def store_packet(packet, replace: false)
           raise KeyError, 'packet id already exists' if !replace && stored_packet?(packet.id)
 
@@ -72,6 +76,11 @@ module MQTT
 
         def qos_handled(packet, unique_id)
           # For memory store, we don't need to persist handled status
+          # This is just for tracking during the current session
+        end
+
+        def qos2_release(id)
+          # For memory store, we don't need to persist QoS2 release status
           # This is just for tracking during the current session
         end
 

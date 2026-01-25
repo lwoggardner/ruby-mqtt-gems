@@ -10,9 +10,9 @@ module Async
   class Monitor
     # Common task interface over Async::Task
     class Task < ConcurrentMonitor::Task
-      def initialize(name = nil, report_on_exception: true, &block)
+      def initialize(name_arg = nil, name: name_arg, report_on_exception: true, &block)
         super()
-        Async(annotation: name, finished: report_on_exception ? nil : Async::Condition.new) do |task|
+        Async(annotation: name, finished: report_on_exception ? nil : false) do |task|
           @task = task
           Fiber.current.concurrent_monitor_task = self
           block.call(self)
@@ -23,7 +23,12 @@ module Async
 
       def current? = @task.current?
 
-      def value = @task.wait
+      def value
+        result = @task.wait
+        raise ConcurrentMonitor::TaskStopped, 'Task was stopped' if @task.stopped?
+
+        result
+      end
 
       def stop
         raise Async::Stop if current?

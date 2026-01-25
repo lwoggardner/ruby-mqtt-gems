@@ -5,26 +5,27 @@ module MQTT
   module Options
     private
 
-    # Slice out a set of options, removing them from  the original hash
-    # @param [Hash] opts
-    # @param [Array<Symbol,Regexp>] keys
-    #   - Symbol: exact match
-    #   - Regexp: match against key, using first matching group to name the option (eg remove prefix/suffix)
-    # @return [Hash]
-    def slice_opts!(opts, *keys) # rubocop:disable Metrics/AbcSize
-      {}.tap do |slice|
-        opts.delete_if do |o, v|
-          keys.any? do |k|
-            if k.is_a?(Regexp)
-              k.match(o).tap { slice[(it[1] || o).to_sym] = v if it }
-            else
-              (k.to_sym == o).tap { slice[o] = v if it }
-            end
-          end
-        end
-        slice.each { |k, v| slice[k] = yield(k, v) } if block_given?
-      end
+    # rubocop:disable Metrics
+
+    # Optimized slice and replace exact keys, delete_if a single prefix or regex.
+    # @param opts [Hash]
+    # @param keys [Array<Symbol>]
+    # @param prefix [String] slices entries from opts whose keys start with this prefix
+    # @param pattern [Regex] slices entries from opts whose keys match this pattern
+    # @yield [k,v] transform values (with key)
+    def slice_opts!(opts, *keys, prefix: nil, pattern: nil)
+      s = opts.slice(*keys)
+      opts.replace(opts.except(*keys)) if keys.any?
+
+      opts.delete_if { |k, v| k.start_with?(prefix) && (s[k.to_s.delete_prefix(prefix).to_sym] = v || true) } if prefix
+      opts.delete_if { |k, v| (m = pattern.match(k)) && (s[m[1].to_sym] = v || true) } if pattern
+
+      return s unless block_given?
+
+      s.each { |k, v| s[k] = yield(k, v) }
     end
+
+    # rubocop:enable Metrics
 
     def coerce_boolean(_key, value)
       return value if [true, false, nil].include?(value)
@@ -54,6 +55,15 @@ module MQTT
       end
     rescue ArgumentError => e
       raise ArgumentError, "#{key}: #{e.message}"
+    end
+
+    #  @param value [Class, Proc, Object] a Class to create the instance,  a Proc to create the instance,
+    #   or an already constructed instance
+    def construct(value, *, **)
+      return value.call(*, **) if value.respond_to?(:call)
+      return value.new(*, **) if value.is_a?(Class)
+
+      value
     end
   end
 end

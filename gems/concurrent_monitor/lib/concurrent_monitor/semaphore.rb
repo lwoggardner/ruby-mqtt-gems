@@ -37,7 +37,7 @@ module ConcurrentMonitor
     end
 
     # Start a task, blocking until the semaphore can be acquired
-    def async(name = nil, report_on_exception: true, &)
+    def async(name_arg = nil, name: name_arg, report_on_exception: true, &)
       synchronize do
         @condition.wait_while { @task_count >= @limit }
         @task_count += 1

@@ -19,7 +19,27 @@ describe 'MQTT::V5::Packet::Publish' do
     io = StringIO.new
     packet.serialize(io)
     s = MQTT::Core::Packet.hex(io.string)
-    _(s).must_equal('30 31 00 07 72 65 71 75 65 73 74 10 02 00 00 01 2c 08 00 08 72 65 73 70 6f 6e 73 65 54 68 69 73 20 69 73 20 61 20 51 6f 53 20 30 20 6d 65 73 73 61 67 65'.b)
+    # Updated to include payload_format_indicator=1 (01 01) for UTF-8 payload
+    _(s).must_equal('30 33 00 07 72 65 71 75 65 73 74 12 01 01 02 00 00 01 2c 08 00 08 72 65 73 70 6f 6e 73 65 54 68 69 73 20 69 73 20 61 20 51 6f 53 20 30 20 6d 65 73 73 61 67 65'.b)
+  end
+
+  it 'serialises PUBLISH with correlation_data' do
+    data = {
+      qos: 0,
+      topic_name: 'test/topic',
+      correlation_data: 'my-correlation-id',
+      payload: 'test payload'
+    }
+    packet = packet_class.new(**data)
+    _(packet.correlation_data).must_equal('my-correlation-id')
+    
+    io = StringIO.new
+    packet.serialize(io)
+    io.rewind
+    
+    deserialized = MQTT::V5::Packet.deserialize(io)
+    _(deserialized.correlation_data).must_equal('my-correlation-id')
+    _(deserialized.payload).must_equal('test payload')
   end
 
   describe 'MQTT 5.0 Compliance' do
@@ -109,6 +129,122 @@ describe 'MQTT::V5::Packet::Publish' do
       packet.apply_alias(alias: 5)
       
       _(packet.topic_alias).must_equal 5
+    end
+  end
+
+  describe 'response_topic serialization' do
+    it 'serializes and deserializes response_topic property' do
+      packet = packet_class.new(topic_name: 'test', qos: 0, response_topic: 'resp', payload: 'test')
+      io = StringIO.new
+      packet.serialize(io)
+      
+      io.rewind
+      deserialized = MQTT::V5::Packet.deserialize(io)
+      _(deserialized.response_topic).must_equal 'resp'
+    end
+  end
+
+  describe 'subscription_identifiers' do
+    it 'serializes and deserializes multiple subscription_identifiers' do
+      # Server/proxy can send multiple subscription_identifiers when message matches multiple subscriptions
+      packet = packet_class.new(
+        topic_name: 'test/topic',
+        qos: 0,
+        subscription_identifiers: [1, 5, 10],
+        payload: 'test payload'
+      )
+      
+      io = StringIO.new
+      packet.serialize(io)
+      io.rewind
+      
+      deserialized = MQTT::V5::Packet.deserialize(io)
+      _(deserialized.subscription_identifiers).must_equal [1, 5, 10]
+      _(deserialized.payload).must_equal 'test payload'
+    end
+  end
+
+  describe 'payload_format_indicator' do
+    it 'auto-sets payload_format_indicator=1 for UTF-8 payloads on outgoing packets' do
+      packet = packet_class.new(
+        topic_name: 'test/topic',
+        payload: 'hello world 🌍'
+      )
+      
+      _(packet.payload.encoding).must_equal Encoding::UTF_8
+      _(packet.payload_format_indicator).must_equal 1
+    end
+
+    it 'does not set payload_format_indicator for binary payloads on outgoing packets' do
+      packet = packet_class.new(
+        topic_name: 'test/topic',
+        payload: "\x00\x01\x02\x03".b
+      )
+      
+      _(packet.payload.encoding).must_equal Encoding::ASCII_8BIT
+      _(packet.payload_format_indicator).must_be_nil
+    end
+
+    it 'auto-encodes payload to UTF-8 when payload_format_indicator=1 on incoming packets' do
+      # Create packet with UTF-8 payload and pfi=1
+      original = packet_class.new(
+        topic_name: 'test/topic',
+        payload: 'hello world 🌍',
+        payload_format_indicator: 1
+      )
+      
+      # Serialize and deserialize (simulating broker forwarding)
+      io = StringIO.new
+      original.serialize(io)
+      io.rewind
+      
+      deserialized = MQTT::V5::Packet.deserialize(io)
+      
+      _(deserialized.payload).must_equal 'hello world 🌍'
+      _(deserialized.payload.encoding).must_equal Encoding::UTF_8
+      _(deserialized.payload_format_indicator).must_equal 1
+    end
+
+    it 'preserves binary encoding when payload_format_indicator=0 on incoming packets' do
+      # Create packet with binary payload and pfi=0
+      original = packet_class.new(
+        topic_name: 'test/topic',
+        payload: "\x00\x01\x02\x03".b,
+        payload_format_indicator: 0
+      )
+      
+      # Serialize and deserialize (simulating broker forwarding)
+      io = StringIO.new
+      original.serialize(io)
+      io.rewind
+      
+      deserialized = MQTT::V5::Packet.deserialize(io)
+      
+      _(deserialized.payload).must_equal "\x00\x01\x02\x03".b
+      _(deserialized.payload.encoding).must_equal Encoding::ASCII_8BIT
+      _(deserialized.payload_format_indicator).must_equal 0
+    end
+
+    it 'handles invalid UTF-8 gracefully when payload_format_indicator=1' do
+      # Per MQTT 5.0 spec section 5.4.9, validation is optional to avoid weaponization
+      # Create packet with invalid UTF-8 bytes but pfi=1
+      original = packet_class.new(
+        topic_name: 'test/topic',
+        payload: "\xFF\xFE".b,
+        payload_format_indicator: 1
+      )
+      
+      # Serialize and deserialize (simulating broker forwarding)
+      io = StringIO.new
+      original.serialize(io)
+      io.rewind
+      
+      deserialized = MQTT::V5::Packet.deserialize(io)
+      
+      _(deserialized.payload).must_equal "\xFF\xFE"
+      _(deserialized.payload.encoding).must_equal Encoding::UTF_8
+      _(deserialized.payload.valid_encoding?).must_equal false
+      _(deserialized.payload_format_indicator).must_equal 1
     end
   end
 end

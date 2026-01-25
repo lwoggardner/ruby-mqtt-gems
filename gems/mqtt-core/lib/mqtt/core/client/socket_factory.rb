@@ -18,14 +18,14 @@ module MQTT
 
         # Option keys for constructing an IO object.
         # @see new_io
-        IO_OPTIONS = (%i[connect_timeout resolv_timeout tcp_nodelay] + [:ssl_context, /ssl_(.*)/]).freeze
+        IO_OPTIONS = (%i[connect_timeout resolv_timeout tcp_nodelay] + [:ssl_context, 'ssl_']).freeze
 
         # All option keys owned by SocketFactory
         OPTIONS = (%i[ignore_uri_params] + URI_OPTIONS + IO_OPTIONS).freeze
 
         # Removes {OPTIONS} from an options Hash.
         def self.extract_io_options(options)
-          slice_opts!(options, *OPTIONS)
+          slice_opts!(options, *OPTIONS[..-1], prefix: OPTIONS.last)
         end
 
         # Create a SocketFactory for establishing MQTT connections
@@ -186,7 +186,7 @@ module MQTT
         end
 
         def slice_ssl_opts!(opts, *_keys)
-          slice_opts!(opts, :ssl_context, /^ssl_(.*)$/) do |k, v|
+          slice_opts!(opts, :ssl_context, prefix: 'ssl_') do |k, v|
             case k
             when :verify_mode
               coerce_ssl_verify_mode(v)

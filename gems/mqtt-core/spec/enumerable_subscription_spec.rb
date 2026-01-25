@@ -50,6 +50,9 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
       def to_h
         { topic: @topic, payload: @payload, qos: @qos }
       end
+      def deconstruct_message(&)
+        super(:qos, &)
+      end
       include MQTT::Core::Packet::Publish
     end
   end
@@ -329,6 +332,106 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
 
     it 'does not respond to non-enumerable methods with bang' do
       _(subscription.respond_to?(:foobar!)).must_equal(false)
+    end
+  end
+
+  describe 'concurrent put(nil)' do
+    it 'stops iteration in another thread' do
+      require 'concurrent_monitor'
+      
+      stub_client = Object.new
+      stub_client.extend(ConcurrentMonitor)
+      stub_client.monitor = ConcurrentMonitor.thread_monitor.new
+      
+      def stub_client.handled!(packet); end
+      def stub_client.delete_subscription(sub, **opts); end
+      
+      real_queue = stub_client.new_queue
+      real_sub = MQTT::Core::Client::EnumerableSubscription.new(
+        sub_packet: nil,
+        ack_packet: nil,
+        handler: real_queue,
+        client: stub_client
+      )
+
+      results = []
+      thread = Thread.new do
+        real_sub.each { |t, p| results << [t, p] }
+      end
+
+      sleep 0.1 # ensure thread is blocked on dequeue
+      real_sub.put(mock_publish.new(topic: 'test/1', payload: 'msg1'))
+      real_sub.put(nil)
+      
+      thread.join(1)
+      _(thread.alive?).must_equal(false)
+      _(results.size).must_equal(1)
+    end
+
+    it 'stops iteration in async fiber' do
+      require 'concurrent_monitor'
+      require 'async'
+      
+      stub_client = Object.new
+      stub_client.extend(ConcurrentMonitor)
+      stub_client.monitor = ConcurrentMonitor.async_monitor.new
+      
+      def stub_client.handled!(packet); end
+      def stub_client.delete_subscription(sub, **opts); end
+      
+      real_queue = stub_client.new_queue
+      real_sub = MQTT::Core::Client::EnumerableSubscription.new(
+        sub_packet: nil,
+        ack_packet: nil,
+        handler: real_queue,
+        client: stub_client
+      )
+
+      results = []
+      Async do
+        task = stub_client.async do
+          real_sub.each { |t, p| results << [t, p] }
+        end
+
+        sleep 0.1
+        real_sub.put(mock_publish.new(topic: 'test/1', payload: 'msg1'))
+        real_sub.put(nil)
+        
+        task.wait
+        _(results.size).must_equal(1)
+      end
+    end
+
+    it 'stops async_packets with put(nil)' do
+      require 'concurrent_monitor'
+      require 'async'
+      
+      stub_client = Object.new
+      stub_client.extend(ConcurrentMonitor)
+      stub_client.monitor = ConcurrentMonitor.async_monitor.new
+      
+      def stub_client.handled!(packet); end
+      def stub_client.delete_subscription(sub, **opts); end
+      
+      real_queue = stub_client.new_queue
+      real_sub = MQTT::Core::Client::EnumerableSubscription.new(
+        sub_packet: nil,
+        ack_packet: nil,
+        handler: real_queue,
+        client: stub_client
+      )
+
+      results = []
+      Async do
+        _sub, task = real_sub.async_packets { |pkt| results << pkt }
+
+        sleep 0.1
+        real_sub.put(mock_publish.new(topic: 'test/1', payload: 'msg1'))
+        real_sub.put(nil)
+        
+        task.wait
+        _(results.size).must_equal(1)
+      end
     end
   end
 end

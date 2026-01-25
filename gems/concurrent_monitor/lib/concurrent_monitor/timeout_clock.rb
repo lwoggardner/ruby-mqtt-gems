@@ -23,12 +23,12 @@ module ConcurrentMonitor
       # Create a TimeoutClock and wait until block is true. See {#wait_until}
       # @example
       #   TimeoutClock.wait_until(60) { closed? || (sleep(1) && false)}
-      def wait_until(timeout = nil, delay: nil, exception: nil, &)
+      def wait_until(timeout_arg = nil, timeout: timeout_arg, delay: nil, exception: nil, &)
         timeout(timeout).wait_until(exception:, delay:, &)
       end
 
       # Create a TimeoutClock and wait while block is true. See {#wait_while}
-      def wait_while(timeout = nil, delay: nil, exception: nil, &)
+      def wait_while(timeout_arg = nil, timeout: timeout_arg, delay: nil, exception: nil, &)
         timeout(timeout).wait_while(exception:, delay:, &)
       end
     end

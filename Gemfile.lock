@@ -1,12 +1,15 @@
 PATH
   remote: gems
   specs:
-    concurrent_monitor (0.0.1.ci.release)
-    mqtt-core (0.0.1.ci.release)
+    concurrent_monitor (0.0.1.feature.request.response)
+    json_rpc_kit (0.1.0.feature.request.response)
+      json (~> 2.0)
+    mqtt-core (0.0.1.feature.request.response)
       concurrent_monitor
-    mqtt-v3 (0.0.1.ci.release)
+    mqtt-v3 (0.0.1.feature.request.response)
       mqtt-core
-    mqtt-v5 (0.0.1.ci.release)
+    mqtt-v5 (0.0.1.feature.request.response)
+      json_rpc_kit
       mqtt-core
 
 GEM
@@ -14,7 +17,7 @@ GEM
   specs:
     ansi (1.5.0)
     ast (2.4.3)
-    async (2.35.0)
+    async (2.35.3)
       console (~> 1.29)
       fiber-annotation
       io-event (~> 1.11)
@@ -33,23 +36,26 @@ GEM
       fiber-storage
     fiber-storage (1.0.1)
     io-event (1.14.2)
-    json (2.17.0)
+    json (2.18.0)
     kramdown (2.5.1)
       rexml (>= 3.3.9)
     language_server-protocol (3.17.0.5)
     lint_roller (1.1.0)
+    logger (1.7.0)
     metrics (0.15.0)
-    minitest (5.26.2)
+    minitest (6.0.1)
+      prism (~> 1.5)
+    minitest-mock (5.27.0)
     minitest-reporters (1.7.1)
       ansi
       builder
       minitest (>= 5.0)
       ruby-progressbar
     parallel (1.27.0)
-    parser (3.3.10.0)
+    parser (3.3.10.1)
       ast (~> 2.4.1)
       racc
-    prism (1.6.0)
+    prism (1.8.0)
     profile (0.4.0)
     racc (1.8.1)
     rainbow (3.1.1)
@@ -57,7 +63,7 @@ GEM
     redcarpet (3.6.1)
     regexp_parser (2.11.3)
     rexml (3.4.4)
-    rubocop (1.81.7)
+    rubocop (1.82.1)
       json (~> 2.3)
       language_server-protocol (~> 3.17.0.2)
       lint_roller (~> 1.1.0)
@@ -65,12 +71,12 @@ GEM
       parser (>= 3.3.0.2)
       rainbow (>= 2.2.2, < 4.0)
       regexp_parser (>= 2.9.3, < 3.0)
-      rubocop-ast (>= 1.47.1, < 2.0)
+      rubocop-ast (>= 1.48.0, < 2.0)
       ruby-progressbar (~> 1.7)
       unicode-display_width (>= 2.4.0, < 4.0)
-    rubocop-ast (1.48.0)
+    rubocop-ast (1.49.0)
       parser (>= 3.3.7.2)
-      prism (~> 1.4)
+      prism (~> 1.7)
     rubocop-minitest (0.38.2)
       lint_roller (~> 1.1)
       rubocop (>= 1.75.0, < 2.0)
@@ -79,13 +85,13 @@ GEM
       lint_roller (~> 1.1)
       rubocop (>= 1.72.1)
     ruby-progressbar (1.13.0)
-    thor (1.4.0)
+    thor (1.5.0)
     traces (0.18.2)
     unicode-display_width (3.2.0)
       unicode-emoji (~> 4.1)
-    unicode-emoji (4.1.0)
+    unicode-emoji (4.2.0)
     webrick (1.9.2)
-    yard (0.9.37)
+    yard (0.9.38)
 
 PLATFORMS
   x86_64-linux
@@ -94,8 +100,11 @@ DEPENDENCIES
   async
   bundler-audit
   concurrent_monitor!
+  json_rpc_kit!
   kramdown
+  logger
   minitest
+  minitest-mock
   minitest-reporters
   mqtt-core!
   mqtt-v3!
@@ -110,4 +119,4 @@ DEPENDENCIES
   yard
 
 BUNDLED WITH
-   2.4.10
+  4.0.3

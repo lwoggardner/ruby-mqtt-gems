@@ -132,7 +132,7 @@ module MQTT
 
       def_delegators :connection, :keep_alive, :connected?
 
-      def_delegators :session, :client_id, :expiry_interval, :max_qos
+      def_delegators :session, :client_id, :expiry_interval, :max_qos, :validate_qos!
 
       # @!visibility private
       def initialize(socket_factory:, monitor:, session_store:)
@@ -493,12 +493,16 @@ module MQTT
       def connection
         synchronize do
           run if @status == :configure
-          conn_cond.wait_while { @status == :disconnected }
-          raise ConnectionError, 'Stopped.', cause: @exception if @status == :stopped && @exception
+          conn_cond.wait_while { @status == :disconnected || (@stopping && @stopping != current_task) }
+
+          raise @exception if @status == :stopped && @exception
           raise ConnectionError, "Not connected. #{@status}" unless @status == :connected
-          raise ConnectionError, 'Disconnecting...' if @stopping && @stopping != current_task
 
           @connection
+        rescue StandardError => e
+          raise ConnectionError, e.message.to_s unless e.is_a?(ConnectionError)
+
+          raise
         end
       end
 
@@ -544,7 +548,7 @@ module MQTT
         disconnected!(retry_count += 1) { raise e }
         # If we are going to restart with a clean session existing acks and subs need to be cancelled.
         retry unless synchronize do
-          @stopping.tap { |stopping| cancel_session('Restarting session') if !stopping && session.clean? }
+          @stopping.tap { |stopping| cancel_session('Restarting session', e) if !stopping && session.clean? }
         end
       ensure
         stop!(e)
@@ -582,13 +586,18 @@ module MQTT
       def birth!
         async(:birth) do
           handle_event(:birth)
-          session.birth_complete!
+          birth_complete!
         rescue ConnectionError => e
           log.warn { "Ignoring ConnectionError in birth handler: #{e.class}: #{e.message}" }
         rescue StandardError => e
           log.error { "Unexpected error in birth handler: #{e.class}: #{e.message}. Disconnecting..." }
           disconnect(cause: e)
         end
+      end
+
+      # to be overridden in V5 for automatic response subscription.
+      def birth_complete!
+        session.birth_complete!
       end
 
       # @note synchronized - sub needs to be available to immediate receive publish
@@ -672,17 +681,18 @@ module MQTT
 
           @exception = exception
           @status = :stopped
-          cancel_session('Connection stopped')
+          cancel_session('Connection stopped', exception)
           conn_cond.broadcast
           @run&.stop unless @run&.current?
         end
       end
 
       # called before retrying with a clean session or while stopping?
-      def cancel_session(msg)
-        cause = ConnectionError.new(msg)
-        cancel_acks(cause)
-        cancel_subs(cause)
+      def cancel_session(msg, cause = nil)
+        conn_error = ConnectionError.new(msg)
+        cancel_acks(conn_error)
+        # Send nil on clean disconnect, ConnectionError on error disconnect
+        cancel_subs(cause ? conn_error : nil)
       end
 
       def cancel_subs(cause)
