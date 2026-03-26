@@ -26,14 +26,21 @@ class Thread
       def initialize(name_arg = nil, name: name_arg, report_on_exception: true, &block)
         super()
         @stopped = nil
-        @thread = Thread.new(self, name, report_on_exception, block) do |t, n, e, b|
-          run_thread(t, n, e, &b)
-        rescue Stop
-          @stopped = true
-          nil
-        ensure
-          @stopped ||= false
-        end
+
+        @thread =
+          if block_given?
+            Thread.new(self, name, report_on_exception, block) do |t, n, e, b|
+              run_thread(t, n, e, &b)
+            rescue Stop
+              @stopped = true
+              nil
+            ensure
+              @stopped ||= false
+            end
+          else
+            # this is the main thread
+            Thread.current.tap { |t| t.thread_variable_set(:concurrent_monitor_task, self) }
+          end
       end
 
       def alive? = @thread.alive?
@@ -100,7 +107,7 @@ class Thread
       end
 
       def current_task
-        Thread.current.thread_variable_get(:concurrent_monitor_task)
+        Thread.current.thread_variable_get(:concurrent_monitor_task) || Task.new
       end
 
       def task_dump(io = $stderr)
