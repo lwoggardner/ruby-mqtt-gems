@@ -79,19 +79,26 @@ module MQTT
         MAX_QOS_FIELD = :max_qos
         include MQTT::Core::Packet::Subscribe
 
-        def match?(publish_packet)
-          if subscription_identifier&.positive?
-            publish_packet.match_subscription_identifier?(subscription_identifier)
-          else
-            super
-          end
-        end
-
         def apply_overrides(data)
           super
           # Transform $share/group/topic filters to just topic for matching
           @fully_qualified_topics&.map! { |tf| extract_topic_filter(tf) }
           @wildcard_topics&.map! { |tf| extract_topic_filter(tf) }
+        end
+
+        # @param strict [Boolean] behaviour for matching when we do not have an identifier
+        #  - true - only match if the 'PUBLISH' packet has no identifiers
+        #  - false - match regardless of 'PUBLISH' identifiers
+        def match_identifiers?(publish, strict: false)
+          # if we have a subscription identifier, then the publish packet must include our identifier
+          return publish.subscription_identifiers&.include?(subscription_identifier) if subscription_identifier
+
+          # If we do not have a subscription identifier, and neither does the packet, then we match.
+          !strict || !publish.subscription_identifiers&.any?
+        end
+
+        def to_s
+          "#{super}, topics=#{subscribed_topic_filters}, id: #{subscription_identifier}"
         end
 
         private

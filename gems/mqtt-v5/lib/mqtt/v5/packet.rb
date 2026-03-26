@@ -65,7 +65,7 @@ module MQTT
         [0x26, :user_properties, [:utf8pair], :all],
         [0x27, :maximum_packet_size, :int32, %i[connect connack]],
         [0x28, :wildcard_subscription_available, :boolean, [:connack]],
-        [0x29, :subscription_identifier_available, :boolean, [:connack]],
+        [0x29, :subscription_identifiers_available, :boolean, [:connack]],
         [0x2A, :shared_subscription_available, :boolean, [:connack]]
       ].map { |data| MQTT::Core::Type::Properties::PropertyType.create(*data, types: VALUE_TYPES) }.freeze
 

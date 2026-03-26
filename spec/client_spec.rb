@@ -97,6 +97,27 @@ module MQTT
           end
         end
 
+        it 'receives messages with wildcard subscription' do
+          base_topic = "ruby_mqtt5/wildcard_test/#{SecureRandom.hex(4)}"
+          
+          with_client(session_store: client_class.qos0_store) do |subscriber|
+            sub = subscriber.subscribe("#{base_topic}/#")
+            
+            with_client(session_store: client_class.qos0_store) do |publisher|
+              publisher.publish("#{base_topic}/a", "msg_a")
+              publisher.publish("#{base_topic}/b", "msg_b")
+              publisher.publish("#{base_topic}/c/d", "msg_c_d")
+            end
+            
+            messages = sub.take(3)
+            expect(messages.size).must_equal(3)
+            topics = messages.map { |t, _| t }
+            expect(topics).must_include("#{base_topic}/a")
+            expect(topics).must_include("#{base_topic}/b")
+            expect(topics).must_include("#{base_topic}/c/d")
+          end
+        end
+
         it 'receives messages in FIFO order' do
           topic = 'ruby_mqtt5/fifo_test'
           

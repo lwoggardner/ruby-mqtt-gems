@@ -100,9 +100,9 @@ module MQTT
         unix_socket = File.expand_path('fixture/mosquitto/mqtt.sock', __dir__)
         [
           { uri: 'mqtt://broker.hivemq.com', sys_topic: nil, skip: true },
-          { uri: 'mqtt://localhost', sys_topic: '$SYS/broker/version', skip: false },
-          { uri: "unix://#{unix_socket}", sys_topic: '$SYS/broker/version', skip: !File.exist?(unix_socket) },
-          { uri: 'mqtt://test.mosquitto.org', sys_topic: '$SYS/broker/version', skip: true }
+          { uri: 'mqtt://localhost?subscription_identifiers_strict=Y', sys_topic: '$SYS/broker/version', skip: false },
+          { uri: "unix://#{unix_socket}?subscription_identifiers_strict=Y", sys_topic: '$SYS/broker/version', skip: !File.exist?(unix_socket) },
+          { uri: 'mqtt://test.mosquitto.org?subscription_identifiers_strict=Y', sys_topic: '$SYS/broker/version', skip: true }
         ].reject { |opts| opts[:skip] }
           .kw_each do |uri:, sys_topic:, **|
           # Rubymine is confused by '.' characters

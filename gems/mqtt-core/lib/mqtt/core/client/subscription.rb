@@ -23,30 +23,92 @@ module MQTT
     end
 
     class Client
-      Subscription = Data.define(:sub_packet, :ack_packet, :handler, :client)
-
       # Base subscription for handling received messages
-      class Subscription < Data
-        # @!attribute [r] sub_packet
-        #   @return [Packet] the `SUBSCRIBE` packet
+      class Subscription
+        # Logic for filter matching
+        module Filters
+          module_function
 
-        # @!attribute [r] ack_packet
-        #  @return [Packet] the `SUBACK` packet
+          # @return [[Array<String>,Array<String>]] fully qualified topics list, wildcard filters list
+          def partition_filters(filters = topic_filters)
+            filters.partition { |f| !wildcard_filter?(f) }
+          end
 
-        # Classify `SUBACK` results
-        # @return [Hash<String,Symbol>]
-        #   Map pf filter to acknowledged status. version-specific.
-        #
-        # @see Packet::Subscribe#filter_status
-        def filter_status
-          sub_packet.filter_status(ack_packet)
+          # @return [Array<String>] wildcard filters for this subscription
+          def wildcard_filters(filters = topic_filters)
+            filters.select { |f| wildcard_filter?(f) }
+          end
+
+          # Check if a topic matches any of this subscription's filters
+          # called: from qos_published
+          #  - applying persistent session messages that arrived before the sub could be re-established
+          # @param topic [String] topic name to match
+          # @return [Boolean] true if topic matches any filter
+          def match_topic?(topic, filters = topic_filters)
+            fq, wc = partition_filters(filters)
+
+            fq.include?(topic) || wc.any? { |wt| wildcard_match?(topic, wt) }
+          end
+
+          def wildcard_filter?(filter)
+            filter.match?(/[+#]/)
+          end
+
+          def wildcard_match?(topic, wc_topic)
+            wc_parts = wc_topic.split('/')
+            topic_parts = topic.split('/')
+
+            wc_parts.zip(topic_parts).all? do |(wc, t)|
+              return true if wc == '#'
+              return false if t.nil?
+
+              wc == '+' || t == wc
+            end && (wc_parts.last == '#' || topic_parts.size == wc_parts.size)
+          end
         end
 
-        # Deregister this Subscription from its client and unsubscribe its topics from the server.
-        # @param [Hash<Symbol>] unsubscribe additional properties for the `UNSUBSCRIBE` packet
-        # @note this will also terminate the current enumeration.
-        def unsubscribe(**unsubscribe)
-          client.delete_subscription(self, **unsubscribe, **unsubscribe_params)
+        include Filters
+
+        attr_reader :topic_filters
+
+        def initialize(client:, handler:)
+          @client = client
+          @handler = handler
+          @topic_filters = Set.new
+        end
+
+        # Add topic filters to this Subscription and send them to the broker
+        #
+        # @overload subscribe(*topic_filters, **subscribe)
+        #  @param topic_filters [Array<String>] filters to add
+        #  @param subscribe [Hash] additional `SUBSCRIBE` packet options
+        # @return [Packet::Subscribe,Packet::SubAck]
+        def subscribe(*topic_filters, **)
+          new_filters = nil
+          client.subscribe!(*topic_filters, **) do |subscribe|
+            new_filters = client.message_router.register(subscription: self, subscribe:)
+          end
+        rescue StandardError
+          # Only purely new filters are unsubscribed on error. Previously subscribed filters are left untouched
+          unsubscribe(*new_filters) if new_filters&.any?
+          raise
+        end
+
+        # Subtract filters from this Subscription
+        #
+        # This will result in an UNSUBSCRIBE to the broker only if the requested filters are not in used by any other
+        # Subscriptions.
+        #
+        # @param filters [Array<String>] specific filters to remove (default: all)
+        # @param unsubscribe [Hash] additional properties for the `UNSUBSCRIBE` packet
+        # @return [Packet::Unsubscribe, Packet::UnSubAck] if any filters were actually unsubscribed
+        # @return nil if no filters were inactive
+        def unsubscribe(*filters, **unsubscribe)
+          filters += unsubscribe.delete(:topic_filters) || []
+          inactive = client.message_router.deregister(*filters, subscription: self)
+          client.unsubscribe!(*inactive, **unsubscribe) if inactive.any?
+        ensure
+          put(nil) if topic_filters.empty?
         end
 
         # Yield self, ensuring {#unsubscribe}
@@ -65,42 +127,14 @@ module MQTT
         end
 
         # @!visibility private
-        # Match messages
-        def ===(other)
-          sub_packet === other # rubocop:disable Style/CaseEquality
-        end
-
-        # @!visibility private
-        def resubscribe_topic_filters
-          sub_packet.resubscribe_topic_filters(ack_packet)
-        end
-
-        # Successfully subscribed topic filters
-        # @return [Array<String>]
-        def subscribed_topic_filters
-          sub_packet.subscribed_topic_filters(ack_packet)
-        end
-
-        # @!visibility private
         # called from a client when a message has arrived
         def put(packet)
           handle(packet, &handler) unless packet.is_a?(StandardError)
         end
 
-        # @!visibility private
-        def match?(publish_packet)
-          sub_packet.match?(publish_packet)
-        end
-
-        def match_topic?(topic_name)
-          sub_packet.match_topic?(topic_name)
-        end
-
         private
 
-        def unsubscribe_params
-          sub_packet.unsubscribe_params(ack_packet)
-        end
+        attr_reader :client, :handler
 
         def handle(packet)
           (block_given? ? yield(packet) : packet).tap { client.handled!(packet) if packet&.qos&.positive? }

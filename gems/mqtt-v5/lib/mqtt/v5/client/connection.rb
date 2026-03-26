@@ -6,6 +6,7 @@ require_relative '../topic_alias'
 module MQTT
   module V5
     class Client < MQTT::Core::Client
+      # @!visibility private
       # Client protocol for MQTT 5.0
       class Connection < MQTT::Core::Client::Connection # rubocop:disable Metrics/ClassLength
         def initialize(**)
@@ -48,7 +49,7 @@ module MQTT
         private
 
         def_delegators :session, :clean_start, :session_expiry_interval, :max_packet_id, :stored_packet?, :session_store
-        def_delegators :client, :topic_aliases, :auth_ack
+        def_delegators :client, :topic_aliases, :message_router, :auth_ack
 
         def connect_packet(**connect)
           super.tap do |p|
@@ -89,6 +90,7 @@ module MQTT
           @auth&.success(**packet.properties)
           @qos_send_quota = packet.receive_maximum || max_packet_id
           topic_aliases&.clear_outgoing!(packet)
+          message_router.connected!(packet)
           self.keep_alive = [@keep_alive, packet.server_keep_alive || @keep_alive].min if packet.server_keep_alive
           log.debug { "Connected: Keep alive: #{@keep_alive}, Send quota: #{@qos_send_quota}" }
           true

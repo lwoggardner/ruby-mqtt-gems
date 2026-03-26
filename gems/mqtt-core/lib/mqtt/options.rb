@@ -27,7 +27,8 @@ module MQTT
 
     # rubocop:enable Metrics
 
-    def coerce_boolean(_key, value)
+    def coerce_boolean(_key = nil, value = nil, **opts)
+      _key, value = opts.first if opts.size == 1
       return value if [true, false, nil].include?(value)
       return false if value.to_s.match?(/^(false|f|no|n|0)$/i)
 
@@ -58,7 +59,7 @@ module MQTT
     end
 
     #  @param value [Class, Proc, Object] a Class to create the instance,  a Proc to create the instance,
-    #   or an already constructed instance
+    #   or an already constructed instance use_subscription_identifiers
     def construct(value, *, **)
       return value.call(*, **) if value.respond_to?(:call)
       return value.new(*, **) if value.is_a?(Class)

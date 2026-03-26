@@ -7,6 +7,8 @@ require_relative 'client/connection'
 require_relative 'client/session'
 require_relative 'client/acknowledgement'
 require_relative 'client/retry_strategy'
+require_relative 'client/message_router'
+require_relative 'range_allocator'
 require_relative '../logger'
 require_relative '../errors'
 require 'forwardable'
@@ -109,6 +111,11 @@ module MQTT
         end
 
         # @!visibility private
+        def create_message_router(**)
+          self::MessageRouter.new(**)
+        end
+
+        # @!visibility private
         # Extract and remove options for new - subclasses can override to add more
         def new_options(_opts)
           {}
@@ -124,6 +131,9 @@ module MQTT
       # @!attribute [r] uri
       #   @return [URI] universal resource indicator derived from io_args passed to {MQTT.open}
       def_delegator :socket_factory, :uri
+
+      # @!visibility private
+      attr_reader :message_router
 
       # @return [String] client_id and connection status
       def to_s
@@ -141,8 +151,7 @@ module MQTT
         monitor_extended(monitor.new_monitor)
         @status = :configure
         @acks = {}
-        @subs = Set.new
-        @unsubs = Set.new
+        @message_router = self.class.create_message_router(monitor:)
         @run_args = {}
         @events = {}
       end
@@ -244,7 +253,7 @@ module MQTT
       #   @return [self]
 
       # @!method on_unsubscribe(&block)
-      #   Called on {#unsubscribe}
+      #   Called on {#unsubscribe!}
       #   @yield [unsubscribe, unsuback]
       #   @yieldparam [Packet] unsubscribe the `UNSUBSCRIBE` packet sent by this client
       #   @yieldparam [Packet] unsuback the `UNSUBACK` packet received from the server
@@ -325,26 +334,26 @@ module MQTT
 
       # Subscribe to topics
       #
-      # @overload subscribe(*topic_filters,**subscribe)
-      #   Subscribe and return an {EnumerableSubscription} for enumeration.
+      # @overload subscribe(*topic_filters, **subscribe)
+      #  Subscribe and return an {EnumerableSubscription} for enumeration.
       #
-      #   The returned {EnumerableSubscription} holds received and matching messages in an internal
-      #   queue which can be enumerated over using {EnumerableSubscription#each} or {EnumerableSubscription#async}
+      #  The returned {EnumerableSubscription} holds received and matching messages in an internal
+      #  queue which can be enumerated over using {EnumerableSubscription#each} or {EnumerableSubscription#async}
       #
-      #   @param [Array<String<UTF8>|Hash>] topic_filters List of filter expressions. Each element can be
+      #  @param [Array<String<UTF8>|Hash>] topic_filters List of filter expressions. Each element can be
       #     a String or a Hash with `:topic_filter` and `:max_qos` keys.
-      #   @param [Hash<Symbol>] **subscribe additional properties for the `SUBSCRIBE` packet (version-dependent)
-      #   @option subscribe [Integer] max_qos default maximum QoS to request for each topic_filter
-      #   @return [EnumerableSubscription]
-      #   @raise [SubscriptionError] if the server rejects any topic filters
-      #   @example Wait for and return the first message
-      #     topic, message = client.subscribe('some/topic').first
-      #   @example Using enumerator from {EnumerableSubscription#each}
-      #     client.subscribe('some/topic').each { |topic,msg| process(topic,msg) or break }
-      #   @example Enumerating in a new thread via {EnumerableSubscription#async}
-      #     client.subscribe('some/topic#').async { |topic, msg| process(topic, msg) }
-      #   @example With different QoS levels per topic filter
-      #     client.subscribe('status/#', { topic_filter: 'data/#', max_qos: 2 }, max_qos: 1)
+      #  @param [Hash<Symbol>] **subscribe additional properties for the `SUBSCRIBE` packet (version-dependent)
+      #  @option subscribe [Integer] max_qos default maximum QoS to request for each topic_filter
+      #  @return [EnumerableSubscription]
+      #  @raise [SubscriptionError] if the server rejects any topic filters
+      #  @example Wait for and return the first message
+      #    topic, message = client.subscribe('some/topic').first
+      #  @example Using enumerator from {EnumerableSubscription#each}
+      #    client.subscribe('some/topic').each { |topic,msg| process(topic,msg) or break }
+      #  @example Enumerating in a new thread via {EnumerableSubscription#async}
+      #    client.subscribe('some/topic#').async { |topic, msg| process(topic, msg) }
+      #  @example With different QoS levels per topic filter
+      #    client.subscribe('status/#', { topic_filter: 'data/#', max_qos: 2 }, max_qos: 1)
       #
       # @overload subscribe(*topic_filters, **subscribe, &handler)
       #   Subscribe with a block handler for direct packet processing
@@ -352,7 +361,7 @@ module MQTT
       #   @param [Array<String<UTF8>|Hash>] topic_filters List of filter expressions
       #   @param [Hash<Symbol>] **subscribe additional properties for the `SUBSCRIBE` packet (version-dependent)
       #   @option subscribe [Integer] max_qos default maximum QoS to request for each topic_filter
-      #   @yield [packet] Block is called directly from the receive thread for each matching packet
+      #   @yield [packet] Block is called directly from the 'receive' thread for each matching packet
       #   @yieldparam [Packet<PUBLISH>|nil] packet the received `PUBLISH` packet, or nil on disconnect
       #   @yieldreturn [void]
       #   @return [Subscription]
@@ -366,62 +375,52 @@ module MQTT
       #     sub = client.subscribe('some/topic') { |pkt| puts pkt.payload if pkt }
       #     # ...
       #     sub.unsubscribe
-      #
-      # @see Subscription
+      # @see Subscription.subscribe
       # @see on_subscribe
       def subscribe(*topic_filters, **subscribe, &handler)
-        handler ||= new_queue
-        topic_filters += subscribe.delete(:topic_filters) || []
-        connection.subscribe(topic_filters:, **subscribe) do |sub_pkt|
-          send_and_wait(sub_pkt) do |suback_pkt|
-            handle_ack(sub_pkt, suback_pkt)
-            new_subscription(sub_pkt, suback_pkt, handler).tap { |sub| qos_subscription(sub) }
-          end
+        new_subscription(handler).tap do |sub|
+          sub_pkt, _ack_pkt = sub.subscribe(*topic_filters, **subscribe)
+          qos_subscription(sub) if sub_pkt.max_qos.positive?
         end
-      rescue SubscribeError
-        unsubscribe(*topic_filters)
-        raise
       end
 
-      # Safely unsubscribe inactive topic filters
+      # Protocol level subscribe
+      #
+      # Builds and sends a SUBSCRIBE packet, then waits for SUBACK, updating the subscription status on the broker,
+      # triggers send of retained packets etc.
+      #
+      # @param topic_filters [Array<String>]
+      # @return [Packet::Subscribe, Packet::Suback]
+      # @see subscribe
+      def subscribe!(*topic_filters, **subscribe)
+        topic_filters += subscribe.delete(:topic_filters) || []
+        connection.subscribe(topic_filters:, **subscribe) do |sub_pkt|
+          yield(sub_pkt)
+
+          send_and_wait(sub_pkt) do |suback_pkt|
+            handle_ack(sub_pkt, suback_pkt)
+            [sub_pkt, suback_pkt]
+          end
+        end
+      end
+
+      # Protocol level Unsubscribe
       #
       # @param [Array<String>] topic_filters list of filters
       # @param [Hash<Symbol>] unsubscribe additional properties for the `UNSUBSCRIBE` packet
-      # @return [self]
-      # @note Topic filters that are in use by active Subscriptions are removed from the `UNSUBSCRIBE` request.
+      # @return [Packet:Unsubscribe,Packet::UnsubAck]
+      # @note This will unsubscribe the requested filters regardless of which {Subscription}s are active
       # @see Subscription#unsubscribe
       # @see #on_unsubscribe
-      def unsubscribe(*topic_filters, **unsubscribe)
+      def unsubscribe!(*topic_filters, **unsubscribe)
         topic_filters += unsubscribe.delete(:topic_filters) || []
 
-        synchronize do
-          topic_filters -= (@subs - @unsubs).flat_map(&:subscribed_topic_filters)
-          return [] unless topic_filters.any?
-
-          connection.unsubscribe(topic_filters:, **unsubscribe) do |unsub_pkt|
-            send_and_wait(unsub_pkt) { |unsuback_pkt| handle_ack(unsub_pkt, unsuback_pkt) }
+        connection.unsubscribe(topic_filters:, **unsubscribe) do |unsub_pkt|
+          send_and_wait(unsub_pkt) do |unsuback_pkt|
+            handle_ack(unsub_pkt, unsuback_pkt)
+            [unsub_pkt, unsuback_pkt]
           end
         end
-        self
-      end
-
-      # @!visibility private
-      # Called by Subscription#unsubscribe.
-      def delete_subscription(subscription, **unsubscribe_params)
-        synchronize do
-          @unsubs.add(subscription)
-          unsubscribe(**unsubscribe_params).tap do
-            @unsubs.delete(subscription)
-            @subs.delete(subscription)
-          end
-        end
-        subscription.put(nil)
-      end
-
-      # @!visibility private
-      # @return [Boolean] true if this subscription is active - will receive a final 'put'
-      def active_subscription?(subscription)
-        synchronize { @subs.include?(subscription) }
       end
 
       # @!visibility private
@@ -441,9 +440,7 @@ module MQTT
       # Called by: Connection receive loop for received `PUBLISH` packets
       # @return [Array<Subscription>] matched subscriptions
       def receive_publish(packet)
-        synchronize do
-          subs.select { |s| s.match?(packet) } # rubocop:disable Style/SelectByRegexp
-        end
+        @message_router.route(packet)
       end
 
       # @!visibility private
@@ -471,7 +468,7 @@ module MQTT
 
       private
 
-      attr_reader :events, :session, :send_queue, :monitor, :socket_factory, :conn_cond, :subs, :acks, :conn_count
+      attr_reader :events, :session, :send_queue, :monitor, :socket_factory, :conn_cond, :acks, :conn_count
 
       def monitor_extended(monitor)
         @monitor = monitor
@@ -493,7 +490,9 @@ module MQTT
       def connection
         synchronize do
           run if @status == :configure
-          conn_cond.wait_while { @status == :disconnected || (@stopping && @stopping != current_task) }
+          conn_cond.wait_while do
+            @status != :stopped && (@status == :disconnected || (@stopping && @stopping != current_task))
+          end
 
           raise @exception if @status == :stopped && @exception
           raise ConnectionError, "Not connected. #{@status}" unless @status == :connected
@@ -591,6 +590,7 @@ module MQTT
           log.warn { "Ignoring ConnectionError in birth handler: #{e.class}: #{e.message}" }
         rescue StandardError => e
           log.error { "Unexpected error in birth handler: #{e.class}: #{e.message}. Disconnecting..." }
+          log.error { e }
           disconnect(cause: e)
         end
       end
@@ -600,18 +600,16 @@ module MQTT
         session.birth_complete!
       end
 
-      # @note synchronized - sub needs to be available to immediate receive publish
-      def new_subscription(sub_packet, ack_packet, handler)
-        # noinspection RubyArgCount
+      # @return [Subscription] an empty subscription, not yet attached to any topic filters
+      def new_subscription(handler = nil, &block_handler)
+        handler ||= block_handler || new_queue
         klass = handler.respond_to?(:call) ? Subscription : EnumerableSubscription
-        klass.new(sub_packet, ack_packet, handler || new_queue, self).tap { |sub| @subs.add(sub) }
+        klass.new(client: self, handler:)
       end
 
       def qos_subscription(sub)
-        return unless sub.sub_packet.max_qos.positive?
-
         # When re-establishing a subscription to a live session, there may be matching messages already received
-        session.qos_subscribed { |p| sub.match?(p) }.each { |p| sub.put(p) }
+        session.qos_subscribed { |p| sub.put(p) if sub.match_topic?(p.topic_name) }
       end
 
       def connected!(conn, connect_pkt, connack_pkt)
@@ -662,7 +660,9 @@ module MQTT
 
           send_queue.push(packet)
 
-          ack&.value || yield(nil)
+          return ack.value if ack
+
+          yield(nil) if block_given?
         end
       end
 
@@ -696,8 +696,7 @@ module MQTT
       end
 
       def cancel_subs(cause)
-        subs.each { |sub| sub.put(cause) }
-        subs.clear
+        @message_router.clear.each { |s| s.put(cause) }
       end
 
       def cancel_acks(cause)
