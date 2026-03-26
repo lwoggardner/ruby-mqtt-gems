@@ -6,7 +6,28 @@ require 'minitest/mock'
 
 Minitest.load_plugins
 
-ENV['MINITEST_REPORTER'] ||= 'DefaultReporter'
+# Thread dump on USR1 — useful when tests hang (kill -USR1 <pid>)
+trap('USR1') do
+  Thread.list.each do |t|
+    $stderr.puts t.inspect
+    $stderr.puts t.backtrace&.join("\n")
+    $stderr.puts
+  end
+end
+
+ENV['MINITEST_REPORTER'] ||= 'AgentReporter'
+
+# Minimal reporter that suppresses skip output to reduce noise in AI context
+class AgentReporter < Minitest::Reporters::DefaultReporter
+  def record_skip(*) = nil
+
+  def on_report
+    # Filter skipped tests from the failure summary
+    tests.reject!(&:skipped?)
+    super
+  end
+end
+
 Minitest::Reporters.use! unless ENV.include?('RM_INFO') || Minitest::Reporters.reporters&.any?
 
 require 'mqtt/core'
@@ -96,7 +117,7 @@ module MQTT
       def client_spec(*specs, min_qos: 0, protocol_version: nil)
         this = self
         with_brokers do
-          parallelize_me! unless MQTT::Logger.log.debug?
+          parallelize_me! unless MQTT::Logger.log.debug? || ENV.include?('MINITEST_SEQUENTIAL')
           this.with_session_stores(min_qos: min_qos) do
             this.with_client_classes(protocol_version: protocol_version) do
               include(*specs)
