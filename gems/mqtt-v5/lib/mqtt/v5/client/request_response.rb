@@ -180,7 +180,7 @@ module MQTT
 
           # Subscribe to response base to fulfill requests
           def subscribe_responses(*topics, **sub_opts)
-            sub ||= @client.subscribe(*topics, **sub_opts)
+            sub = @client.subscribe(*topics, **sub_opts)
             task = @client.async do
               sub.each do |_topic, payload, correlation_data: nil, **response_attr|
                 next unless (caller = synchronize { @req_pending.delete(correlation_data) })
@@ -241,7 +241,22 @@ module MQTT
         # @return [RequestResponse::Context]
         # @raise [MQTT::Error] unless `:request_response_information` was sent to `CONNECT`
         def default_request_context(*topics, pub_opts: {}, sub_opts: {})
-          @default_request_context ||= new_request_context('default', *topics, pub_opts:, sub_opts:)
+          synchronize { @default_request_context ||= current_task }
+
+          if @default_request_context == current_task
+            begin
+              @default_request_context = new_request_context('default', *topics, pub_opts:, sub_opts:)
+            rescue StandardError => e
+              @default_request_context = e
+            end
+          else
+            wait_until(delay: 0.1, timeout: 5) do
+              [Context, StandardError].any? { |klass| @default_request_context.is_a?(klass) }
+            end
+          end
+          raise @default_request_context if @default_request_context.is_a?(StandardError)
+
+          @default_request_context
         end
 
         # Establish a response subscription. Listen for requests, Serve responses.
@@ -352,10 +367,9 @@ module MQTT
           nil
         end
 
-        def birth!
-          # The default request_context will be dead if this is called more than once.
-          # Also force it to be initiated from the on_birth event
-          @default_request_context = nil
+        def cancel_session(*)
+          # The default request_context will be dead after session is cancelled
+          synchronize { @default_request_context = nil }
           super
         end
 
