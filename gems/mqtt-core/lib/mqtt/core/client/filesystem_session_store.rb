@@ -32,7 +32,7 @@ module MQTT
         end
 
         def restart_clone
-          self.class.new(base_dir, client_id:, expiry_interval:)
+          self.class.new(base_dir:, client_id:, expiry_interval:)
         end
 
         def clean?
