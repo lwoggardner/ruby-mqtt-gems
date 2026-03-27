@@ -332,7 +332,7 @@ The type of session store determines the extent to which QoS 1 and 2 guarantees 
 | Configuration     | None                       | Expiry interval only         | File path / storage configuration |
 | - client_id:      | Anonymous (*1)             | Server assigned (*1)         | Explicit client_id required       |
 | - expiry_interval | Not Applicable (0)         | > 0, nil = never expire (*2) | > 0, nil = never expire (*2)      |
-| Recovery          | Not Applicable             | Automatic (in process)       | Manual action required (*3)       |
+| Recovery          | Not Applicable             | Automatic (in process)       | Automatic (across restarts)       |
 | Cleanup           |                            |                              | Expired Sessions                  |
 | `.open` Option    | _default_                  | `:session_expiry_interval`   | `:session_base_dir`               |
 
@@ -340,14 +340,17 @@ The type of session store determines the extent to which QoS 1 and 2 guarantees 
   will generate a random client_id.  
 * (*2) Setting expiry_interval to nil is actually 0xFFFFFFFF = 136 years. A v5 broker can reply via CONNACK
   with a shorter value. A v3 broker will just silently discard old sessions however it likes.
-* (*3) Between the completion of the QoS2 protocol flow and the completion of client side message handling,
-  the state of the QoS2 'at most once delivery' guarantee is ambiguous. If the client crashes in this phase, then
-  a manual clean-up of each unhandled message is required.
 
 Recommendation:
 * {MQTT::Core::Client::Qos0SessionStore} for applications that do not require QoS 1 or 2 guarantees
 * {MQTT::Core::Client::MemorySessionStore} for testing or when it is ok to lose messages while the client is offline
 * {MQTT::Core::Client::FilesystemSessionStore} if QoS guarantees need to survive across restarts
+
+**Note on QoS 2 and application-level guarantees:**
+QoS 2 guarantees exactly-once *delivery* at the protocol level — the broker will not send duplicate messages
+to the client's receive loop. However, if the application crashes after receiving a message but before completing
+processing, the broker considers the message delivered. Applications requiring exactly-once *processing* should
+implement idempotent message handlers (e.g. deduplication by message content or correlation ID).
 
 
 ```ruby

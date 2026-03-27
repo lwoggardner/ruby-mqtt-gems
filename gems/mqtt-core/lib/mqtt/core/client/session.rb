@@ -77,10 +77,10 @@ module MQTT
 
         # Receiving a message
         def handle_publish(packet)
-          # Notify the client the message has been received (unless we are qos and have already seen it)
+          # Notify the client the message has been received (unless we are qos2 and have already seen it)
           unless packet.qos == 2 && qos2_published?(packet.id)
             matched_subs = receive_publish(packet)
-            qos_received(packet, matched_subs.size) if packet.qos.positive?
+            birth_buffer(packet) if packet.qos.positive? && !birth_complete?
             matched_subs.each { |sub| sub.put(packet) }
           end
 

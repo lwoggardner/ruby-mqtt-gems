@@ -22,9 +22,8 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
 
   let(:mock_client) do
     Class.new do
-      attr_reader :handled_calls, :unsubscribed_filters, :message_router
+      attr_reader :unsubscribed_filters, :message_router
       def initialize
-        @handled_calls = []
         @unsubscribed_filters = []
         @message_router = Class.new do
           def deregister(*filters, subscription:)
@@ -32,9 +31,6 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
             []
           end
         end.new
-      end
-      def handled!(packet)
-        @handled_calls << packet if packet&.qos&.positive?
       end
       def unsubscribe!(*filters, **)
         @unsubscribed_filters.concat(filters)
@@ -297,29 +293,6 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
     end
   end
 
-  describe 'QoS handling' do
-    it 'marks qos1 packets as handled' do
-      pub = mock_publish.new(topic: 'test', payload: 'data', qos: 1)
-      queue.push(pub)
-      subscription.get
-      _(mock_client.handled_calls).must_include(pub)
-    end
-
-    it 'marks qos2 packets as handled' do
-      pub = mock_publish.new(topic: 'test', payload: 'data', qos: 2)
-      queue.push(pub)
-      subscription.get
-      _(mock_client.handled_calls).must_include(pub)
-    end
-
-    it 'does not mark qos0 packets as handled' do
-      pub = mock_publish.new(topic: 'test', payload: 'data', qos: 0)
-      queue.push(pub)
-      subscription.get
-      _(mock_client.handled_calls).wont_include(pub)
-    end
-  end
-
   describe '#method_missing' do
     it 'responds to enumerable methods with bang' do
       _(subscription.respond_to?(:take!)).must_equal(true)
@@ -340,7 +313,6 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
       stub_client.extend(ConcurrentMonitor)
       stub_client.monitor = ConcurrentMonitor.thread_monitor.new
       
-      def stub_client.handled!(packet); end
       def stub_client.delete_subscription(sub, **opts); end
       
       real_queue = stub_client.new_queue
@@ -371,7 +343,6 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
       stub_client.extend(ConcurrentMonitor)
       stub_client.monitor = ConcurrentMonitor.async_monitor.new
       
-      def stub_client.handled!(packet); end
       def stub_client.delete_subscription(sub, **opts); end
       
       real_queue = stub_client.new_queue
@@ -403,7 +374,6 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
       stub_client.extend(ConcurrentMonitor)
       stub_client.monitor = ConcurrentMonitor.async_monitor.new
       
-      def stub_client.handled!(packet); end
       def stub_client.delete_subscription(sub, **opts); end
       
       real_queue = stub_client.new_queue

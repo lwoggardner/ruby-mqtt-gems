@@ -137,7 +137,7 @@ module MQTT
         attr_reader :client, :handler
 
         def handle(packet)
-          (block_given? ? yield(packet) : packet).tap { client.handled!(packet) if packet&.qos&.positive? }
+          block_given? ? yield(packet) : packet
         end
       end
     end

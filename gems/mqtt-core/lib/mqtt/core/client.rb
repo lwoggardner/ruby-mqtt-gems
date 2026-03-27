@@ -379,8 +379,8 @@ module MQTT
       # @see on_subscribe
       def subscribe(*topic_filters, **subscribe, &handler)
         new_subscription(handler).tap do |sub|
-          sub_pkt, _ack_pkt = sub.subscribe(*topic_filters, **subscribe)
-          qos_subscription(sub) if sub_pkt.max_qos.positive?
+          sub.subscribe(*topic_filters, **subscribe)
+          qos_subscription(sub)
         end
       end
 
@@ -461,10 +461,6 @@ module MQTT
 
       # @!visibility private
       def_delegators :packet_module, :build_packet, :deserialize
-
-      # @!visibility private
-      # session methods called via Subscription
-      def_delegators :session, :handled!
 
       private
 
