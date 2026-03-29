@@ -144,3 +144,29 @@ This is acceptable because:
 Concurrent subscribe and unsubscribe of the same filter from different Subscriptions is
 undefined behaviour. Applications should serialize operations on the same filter or accept
 that state may be inconsistent until the next reconnect.
+
+### Duplicate retained messages from overlapping subscriptions
+
+When multiple subscriptions have overlapping topic filters (e.g. `sensor/#` and `sensor/temp`),
+subscribing to the narrower filter may cause the broker to re-send retained messages that the
+broader subscription has already received.
+
+For MQTT 5.0, the `retain_handling` subscribe option can control this at the broker level:
+- `retain_handling: 1` — only send retained messages for genuinely new subscriptions
+- `retain_handling: 2` — never send retained messages
+
+For MQTT 3.1.1, or when finer control is needed, applications can filter duplicates themselves:
+
+```ruby
+seen = Set.new
+client.subscribe('sensor/#').each do |topic, payload, retain:, **|
+  next if retain && !seen.add?(topic)
+  process(topic, payload)
+end
+```
+
+Note: if `retain_as_published` is not set (the default), the broker clears the retain flag on
+forwarded messages. Only messages sent in direct response to a SUBSCRIBE will have `retain: true`,
+which is exactly the case that causes duplicates from overlapping subscriptions. However, to catch
+all duplicates (including topics first seen via live messages), track all seen topics rather than
+only retained ones — at the cost of unbounded memory growth for high-cardinality topic spaces.
