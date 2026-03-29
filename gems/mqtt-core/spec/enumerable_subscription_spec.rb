@@ -22,16 +22,19 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
 
   let(:mock_client) do
     Class.new do
-      attr_reader :handled_calls, :deleted_subs
+      attr_reader :unsubscribed_filters, :message_router
       def initialize
-        @handled_calls = []
-        @deleted_subs = []
+        @unsubscribed_filters = []
+        @message_router = Class.new do
+          def deregister(*filters, subscription:)
+            subscription.topic_filters.subtract(filters.empty? ? subscription.topic_filters.to_a : filters)
+            []
+          end
+        end.new
       end
-      def handled!(packet)
-        @handled_calls << packet if packet&.qos&.positive?
-      end
-      def delete_subscription(sub, **opts)
-        @deleted_subs << [sub, opts]
+      def unsubscribe!(*filters, **)
+        @unsubscribed_filters.concat(filters)
+        self
       end
       def async(name)
         self
@@ -57,18 +60,8 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
     end
   end
 
-  let(:mock_sub_packet) do
-    Struct.new(:x) do
-      def unsubscribe_params(ack)
-        {}
-      end
-    end.new(1)
-  end
-
   let(:subscription) do
     MQTT::Core::Client::EnumerableSubscription.new(
-      sub_packet: mock_sub_packet,
-      ack_packet: nil,
       handler: queue,
       client: mock_client
     )
@@ -214,7 +207,7 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
       5.times { |i| queue.push(mock_publish.new(topic: "t#{i}", payload: "#{i}")) }
       results = subscription.lazy!.select { |_t, p| p.to_i.even? }.take(2).to_a
       _(results.size).must_equal(2)
-      _(mock_client.deleted_subs.size).must_equal(1)
+      _(subscription.topic_filters).must_be_empty
     end
   end
 
@@ -240,7 +233,7 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
       5.times { |i| queue.push(mock_publish.new(topic: "t#{i}", payload: "#{i}")) }
       results = subscription.lazy_packets!.select { |p| p.payload.to_i.even? }.take(2).to_a
       _(results.size).must_equal(2)
-      _(mock_client.deleted_subs.size).must_equal(1)
+      _(subscription.topic_filters).must_be_empty
     end
   end
 
@@ -260,35 +253,35 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
       queue.push(nil)
 
       subscription.each! { |t, _| break unless t }
-      _(mock_client.deleted_subs.size).must_equal(1)
+      _(subscription.topic_filters).must_be_empty
     end
 
     it 'unsubscribes with tap!' do
       result = nil
       subscription.tap! { |s| result = s }
       _(result).must_equal(subscription)
-      _(mock_client.deleted_subs.size).must_equal(1)
+      _(subscription.topic_filters).must_be_empty
     end
 
     it 'unsubscribes with with!' do
       result = nil
       subscription.with! { |s| result = s }
       _(result).must_equal(subscription)
-      _(mock_client.deleted_subs.size).must_equal(1)
+      _(subscription.topic_filters).must_be_empty
     end
 
     it 'unsubscribes with first!' do
       5.times { |i| queue.push(mock_publish.new(topic: "t#{i}", payload: "p#{i}")) }
       result = subscription.first!
       _(result[0]).must_equal('t0')
-      _(mock_client.deleted_subs.size).must_equal(1)
+      _(subscription.topic_filters).must_be_empty
     end
 
     it 'unsubscribes with take!' do
       5.times { |i| queue.push(mock_publish.new(topic: "t#{i}", payload: "p#{i}")) }
       results = subscription.take!(3)
       _(results.size).must_equal(3)
-      _(mock_client.deleted_subs.size).must_equal(1)
+      _(subscription.topic_filters).must_be_empty
     end
 
     it 'unsubscribes with select!' do
@@ -296,30 +289,7 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
       queue.push(nil)
       results = subscription.select! { |t, p| break [] unless t; p.to_i.even? }
       _(results.size).must_equal(3)
-      _(mock_client.deleted_subs.size).must_equal(1)
-    end
-  end
-
-  describe 'QoS handling' do
-    it 'marks qos1 packets as handled' do
-      pub = mock_publish.new(topic: 'test', payload: 'data', qos: 1)
-      queue.push(pub)
-      subscription.get
-      _(mock_client.handled_calls).must_include(pub)
-    end
-
-    it 'marks qos2 packets as handled' do
-      pub = mock_publish.new(topic: 'test', payload: 'data', qos: 2)
-      queue.push(pub)
-      subscription.get
-      _(mock_client.handled_calls).must_include(pub)
-    end
-
-    it 'does not mark qos0 packets as handled' do
-      pub = mock_publish.new(topic: 'test', payload: 'data', qos: 0)
-      queue.push(pub)
-      subscription.get
-      _(mock_client.handled_calls).wont_include(pub)
+      _(subscription.topic_filters).must_be_empty
     end
   end
 
@@ -343,13 +313,10 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
       stub_client.extend(ConcurrentMonitor)
       stub_client.monitor = ConcurrentMonitor.thread_monitor.new
       
-      def stub_client.handled!(packet); end
       def stub_client.delete_subscription(sub, **opts); end
       
       real_queue = stub_client.new_queue
       real_sub = MQTT::Core::Client::EnumerableSubscription.new(
-        sub_packet: nil,
-        ack_packet: nil,
         handler: real_queue,
         client: stub_client
       )
@@ -376,13 +343,10 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
       stub_client.extend(ConcurrentMonitor)
       stub_client.monitor = ConcurrentMonitor.async_monitor.new
       
-      def stub_client.handled!(packet); end
       def stub_client.delete_subscription(sub, **opts); end
       
       real_queue = stub_client.new_queue
       real_sub = MQTT::Core::Client::EnumerableSubscription.new(
-        sub_packet: nil,
-        ack_packet: nil,
         handler: real_queue,
         client: stub_client
       )
@@ -410,13 +374,10 @@ describe 'MQTT::Core::Client::EnumerableSubscription' do
       stub_client.extend(ConcurrentMonitor)
       stub_client.monitor = ConcurrentMonitor.async_monitor.new
       
-      def stub_client.handled!(packet); end
       def stub_client.delete_subscription(sub, **opts); end
       
       real_queue = stub_client.new_queue
       real_sub = MQTT::Core::Client::EnumerableSubscription.new(
-        sub_packet: nil,
-        ack_packet: nil,
         handler: real_queue,
         client: stub_client
       )

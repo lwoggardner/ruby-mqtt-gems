@@ -40,7 +40,7 @@ module MQTT
         end
 
         def disconnect_expiry_interval
-          0  # Memory sessions don't survive disconnect anyway
+          0 # Memory sessions don't survive disconnect anyway
         end
 
         def store_packet(packet, replace: false)
@@ -61,28 +61,11 @@ module MQTT
           @store.values
         end
 
-        def qos2_recover
-          [] # nothing to recover
-        end
+        def qos2_recover = []
 
-        def qos_unhandled_packets
-          {} # nothing was persisted
-        end
+        def qos2_pending(_id) = nil
 
-        def store_qos_received(packet, unique_id)
-          # For memory store, we don't need to persist received packets
-          # This is just for tracking during the current session
-        end
-
-        def qos_handled(packet, unique_id)
-          # For memory store, we don't need to persist handled status
-          # This is just for tracking during the current session
-        end
-
-        def qos2_release(id)
-          # For memory store, we don't need to persist QoS2 release status
-          # This is just for tracking during the current session
-        end
+        def qos2_release(_id) = nil
 
         def restart_clone
           self # don't actually clone.

@@ -27,7 +27,9 @@ module MQTT
         variable(packet_identifier: :int16)
         payload(topic_filters: list(:utf8string))
 
-        alias unsubscribed_topic_filters topic_filters
+        def unsubscribed_topic_filters(_unsuback = nil)
+          topic_filters
+        end
 
         # @!visibility private
         def success!(_unsuback)

@@ -49,56 +49,10 @@ module MQTT
         def apply_overrides(data)
           super
           topic_filters = data.fetch(:topic_filters, [])
-          @wildcard_topics, @fully_qualified_topics = topic_filters.map(&:topic_filter).partition do |t|
-            contains_wildcard?(t)
-          end
           @max_qos = topic_filters.map(&:max_qos).max
         end
 
-        attr_reader :fully_qualified_topics, :wildcard_topics, :max_qos
-
-        def match?(publish_packet)
-          match_topic?(publish_packet.topic_name)
-        end
-
-        def ===(other)
-          case other
-          when Packet
-            match?(other)
-          when String
-            match_topic?(other)
-          else
-            false
-          end
-        end
-
-        def match_topic?(topic_name)
-          match_fully_qualified_topic?(topic_name) || match_wildcard_topic?(topic_name)
-        end
-
-        def match_fully_qualified_topic?(topic_name)
-          fully_qualified_topics.include?(topic_name)
-        end
-
-        def match_wildcard_topic?(topic_name)
-          wildcard_topics.any? { |wt| wc_match?(topic_name, wt) }
-        end
-
-        def contains_wildcard?(topic)
-          topic =~ /[#+]/
-        end
-
-        def wc_match?(topic, wc_topic)
-          wc_parts = wc_topic.split('/')
-          topic_parts = topic.split('/')
-
-          wc_parts.zip(topic_parts).all? do |(wc, t)|
-            return true if wc == '#'
-            return false if t.nil?
-
-            wc == '+' || t == wc
-          end && (wc_parts.last == '#' || topic_parts.size == wc_parts.size)
-        end
+        attr_reader :max_qos
 
         # Map filter expressions to suback status
         #
@@ -135,16 +89,9 @@ module MQTT
           topic_filters.zip(suback.return_codes).filter_map { |tf, rc| tf unless failed?(rc) }
         end
 
-        alias resubscribe_topic_filters subscribed_topic_filter_requests
-        alias unsubscribe_topic_filters subscribed_topic_filter_requests
-
         # @return [Array<String>]
         def subscribed_topic_filters(suback = nil)
           subscribed_topic_filter_requests(suback).map(&:topic_filter)
-        end
-
-        def unsubscribe_params(suback = nil)
-          { topic_filters: subscribed_topic_filters(suback) }
         end
 
         private

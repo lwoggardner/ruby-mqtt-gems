@@ -152,6 +152,11 @@ namespace :test do
     ENV['MINITEST_REPORTER'] = 'SpecReporter'
   end
 
+  desc 'Disable test parallelization (use with another test task)'
+  task :sequential do
+    ENV['MINITEST_SEQUENTIAL'] = '1'
+  end
+
   # Task to run all tests (top-level + all gems) with aggregate reporting
   desc 'Run all tests (project root and all gems)'
   Rake::TestTask.new(:all) do |t|

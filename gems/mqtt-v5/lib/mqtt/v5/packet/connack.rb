@@ -19,16 +19,6 @@ module MQTT
         # @!attribute [r] session_present
         #   @return [Boolean] whether the broker has a stored session for this client
 
-        # @!parse include ReasonCodeAck
-        # @!attribute [r] reason_code
-        #   connection acknowledgement status
-        #
-        #   ✅ Success:
-        #
-        #   - `0x00` Success
-        #
-        #   ❌ Error:
-        #
         #   - `0x80` Unspecified error
         #   - `0x81` Malformed Packet
         #   - `0x82` Protocol Error
@@ -99,6 +89,12 @@ module MQTT
 
         alias connect_reason_code reason_code # align with spec naming
         alias session_present? session_present
+
+        # Check if subscription identifiers are supported
+        # @return [Boolean] true if supported (default true if not specified)
+        def subscription_identifiers_available?
+          subscription_identifiers_available.nil? || subscription_identifiers_available
+        end
 
         # @!visibility private
         def defaults

@@ -86,7 +86,7 @@ module ConcurrentMonitor
             return result
           end
 
-          sleep([delay, self.remaining].min) if delay
+          sleep([delay, self.remaining || delay].min) if delay
         end
 
         raise exception, 'timed out' if exception

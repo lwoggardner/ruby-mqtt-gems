@@ -5,13 +5,13 @@ require_relative 'packets'
 require_relative 'client/authenticator'
 require_relative 'client/connection'
 require_relative 'client/session'
+require_relative 'client/message_router'
 require_relative 'client/request_response'
 require_relative 'client/json_rpc'
 
 module MQTT
   module V5
     # An MQTT::V5 Client
-    #
     class Client < Core::Client
       # @!visibility private
       def self.packet_module
@@ -23,27 +23,64 @@ module MQTT
         5
       end
 
+      # @!visibility private
+      def self.new_options(configure_opts)
+        {
+          topic_aliases: configure_opts.delete(:topic_aliases),
+          subscription_ids: configure_opts.delete(:subscription_ids)
+        }
+      end
+
       include RequestResponse
       include JsonRpc
 
       # @return [TopicAlias::Manager] the topic alias manager manages the bi-directional mapping of topic names to
-      #   topic aliases to limit bandwidth usage.
+      #  topic aliases to limit bandwidth usage.
       attr_reader :topic_aliases
 
-      # @!visibility private
-      def self.new_options(configure_opts)
-        { topic_aliases: configure_opts.delete(:topic_aliases) }
-      end
+      # @!attribute [r] subscription_ids
+      #  @return {MessageRouter::SubscriptionIds}
+      #  @return nil if subscription identifiers were not enabled, or are not supported by the broker
+      def_delegators :@message_router, :subscription_ids
 
       # @!visibility private
-      def initialize(topic_aliases: nil, **)
+      def initialize(topic_aliases: nil, subscription_ids: MessageRouter::SubscriptionIds.new, **)
         @topic_aliases = topic_aliases
         super(**)
+        @message_router.subscription_ids = subscription_ids
       end
 
       # V5 Authentication flow (untested)
       def reauthenticate(**auth)
         connection.reauthenticate(**auth) { |packet| send_and_wait(packet) { |ack| handle_ack(packet, ack) } }
+      end
+
+      # @overload subscribe(*topic_filters,**subscribe)
+      #  @param subscribe [Hash] SUBSCRIBE packet attributes
+      #  @option subscribe :subscription_identifier [Boolean, Integer] (subscription_ids&.available?)
+      #    - Boolean use (or not) auto assigned subscription identifiers
+      #    - Integer - use a specific must be between 1 and the start of the range configured for {#subscription_ids}
+      #  @return [self]
+      # Override to handle subscription_identifier option
+      # - nil (default): allocate if available
+      # - false/0: don't use
+      # - true: must use (fail if not available)
+      # - positive integer: use specific ID
+      def subscribe(*topic_filters, subscription_identifier: :auto, **subscribe, &handler)
+        case subscription_identifier
+        when false, nil, 0
+          # do nothing (and exclude the id from the SUBSCRIBE packet)
+        when true, :auto
+          id = allocate_identifier(required: subscription_identifier != :auto)
+          subscribe[:subscription_identifier] = id if id
+        when Integer
+          validate_user_identifier(subscription_identifier)
+          subscribe[:subscription_identifier] = subscription_identifier
+        else
+          raise ArgumentError, "Subscription_identifier(#{subscription_identifier.class} must be Boolean or Integer"
+        end
+
+        super(*topic_filters, **subscribe, &handler)
       end
 
       # @!method publish(topic, message, **publish)
@@ -61,6 +98,8 @@ module MQTT
       #   @return [self]
       #   @see Packet::Publish
       #   @see Core::Client#publish
+
+      def_delegators :@message_router, :allocate_identifier, :validate_user_identifier
     end
   end
 end

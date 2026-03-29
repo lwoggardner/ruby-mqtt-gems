@@ -151,47 +151,4 @@ describe 'MQTT::V5::Packet::Subscribe' do
     end
   end
 
-  describe 'subscription_identifier matching' do
-    it 'matches publish packet with matching subscription_identifier' do
-      sub = MQTT::V5::Packet::Subscribe.new(packet_identifier: 1, topic_filters: ['test/topic'], subscription_identifier: 5)
-      pub = MQTT::V5::Packet::Publish.new(topic_name: 'test/topic', subscription_identifiers: [5], payload: 'test')
-      
-      _(sub.match?(pub)).must_equal true
-    end
-
-    it 'does not match publish packet with different subscription_identifier' do
-      sub = MQTT::V5::Packet::Subscribe.new(packet_identifier: 1, topic_filters: ['test/topic'], subscription_identifier: 5)
-      pub = MQTT::V5::Packet::Publish.new(topic_name: 'test/topic', subscription_identifiers: [3], payload: 'test')
-      
-      _(sub.match?(pub)).must_equal false
-    end
-
-    it 'matches publish packet with multiple subscription_identifiers including the subscribed one' do
-      sub = MQTT::V5::Packet::Subscribe.new(packet_identifier: 1, topic_filters: ['test/topic'], subscription_identifier: 5)
-      pub = MQTT::V5::Packet::Publish.new(topic_name: 'test/topic', subscription_identifiers: [1, 5, 10], payload: 'test')
-      
-      _(sub.match?(pub)).must_equal true
-    end
-
-    it 'falls back to topic matching when subscription_identifier is not set' do
-      sub = MQTT::V5::Packet::Subscribe.new(packet_identifier: 1, topic_filters: ['test/topic'])
-      pub = MQTT::V5::Packet::Publish.new(topic_name: 'test/topic', subscription_identifiers: [5], payload: 'test')
-      
-      _(sub.match?(pub)).must_equal true
-    end
-
-    it 'falls back to topic matching when subscription_identifier is zero' do
-      sub = MQTT::V5::Packet::Subscribe.new(packet_identifier: 1, topic_filters: ['test/topic'], subscription_identifier: 0)
-      pub = MQTT::V5::Packet::Publish.new(topic_name: 'test/topic', subscription_identifiers: [5], payload: 'test')
-      
-      _(sub.match?(pub)).must_equal true
-    end
-
-    it 'does not match when subscription_identifier is set but publish has none' do
-      sub = MQTT::V5::Packet::Subscribe.new(packet_identifier: 1, topic_filters: ['test/topic'], subscription_identifier: 5)
-      pub = MQTT::V5::Packet::Publish.new(topic_name: 'test/topic', payload: 'test')
-      
-      _(sub.match?(pub)).must_equal false
-    end
-  end
 end

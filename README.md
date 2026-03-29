@@ -189,14 +189,19 @@ Default behaviour is to raise an exception if any topic filter in a `SUBSCRIBE` 
 is not fully accepted by the broker as indicated by the `SUBACK` response.
 
 {MQTT::Core::Client#subscribe} adds the options `:ignore_failed` and `:ignore_qos_limited` to control this 
-behaviour and {MQTT::Core::Client::Subscription#filter_status } can be used to interrogate the `SUBACK` response, eg for logging
-purposes.
+behaviour.
+
+The `on_subscribe` event can be used to further interrogate the `SUBSCRIBE` and `SUBACK` packets,
+eg for logging purposes.
 
 ```ruby
 # request qos level for the subscription to 2, but ignore if broker does not allow
-sub = client.subscribe('prefix/#', max_qos: 2, ignore_qos_limited: true)
+client.on_subscribe do |subscribe, suback|
+  filter_status = subscribe.filter_status(suback) # => { success: ['prefix/#'], qos_limited: [], failed: [] }
+  #... log, etc  
+end
 
-sub.filter_status # => { success: ['prefix/#'], qos_limited: [], failed: [] }
+sub = client.subscribe('prefix/#', max_qos: 2, ignore_qos_limited: true)
 ```
 
 #### Processing Received Messages ####
@@ -296,8 +301,7 @@ messages = client.subscribe('topic/x').take!(5)
 
 {MQTT::Core::Client#disconnect} can be called directly from any thread holding the Client.
 
-An explicit disconnect will unsubscribe from all topics and wait for pending QOS flows to complete before
-disconnecting from the broker.
+An explicit disconnect will wait for pending QOS flows to complete before disconnecting from the broker.
 
 No further calls can be made to the client once the disconnect process has started,
 
@@ -328,7 +332,7 @@ The type of session store determines the extent to which QoS 1 and 2 guarantees 
 | Configuration     | None                       | Expiry interval only         | File path / storage configuration |
 | - client_id:      | Anonymous (*1)             | Server assigned (*1)         | Explicit client_id required       |
 | - expiry_interval | Not Applicable (0)         | > 0, nil = never expire (*2) | > 0, nil = never expire (*2)      |
-| Recovery          | Not Applicable             | Automatic (in process)       | Manual action required (*3)       |
+| Recovery          | Not Applicable             | Automatic (in process)       | Automatic (across restarts)       |
 | Cleanup           |                            |                              | Expired Sessions                  |
 | `.open` Option    | _default_                  | `:session_expiry_interval`   | `:session_base_dir`               |
 
@@ -336,14 +340,17 @@ The type of session store determines the extent to which QoS 1 and 2 guarantees 
   will generate a random client_id.  
 * (*2) Setting expiry_interval to nil is actually 0xFFFFFFFF = 136 years. A v5 broker can reply via CONNACK
   with a shorter value. A v3 broker will just silently discard old sessions however it likes.
-* (*3) Between the completion of the QoS2 protocol flow and the completion of client side message handling,
-  the state of the QoS2 'at most once delivery' guarantee is ambiguous. If the client crashes in this phase, then
-  a manual clean-up of each unhandled message is required.
 
 Recommendation:
 * {MQTT::Core::Client::Qos0SessionStore} for applications that do not require QoS 1 or 2 guarantees
 * {MQTT::Core::Client::MemorySessionStore} for testing or when it is ok to lose messages while the client is offline
 * {MQTT::Core::Client::FilesystemSessionStore} if QoS guarantees need to survive across restarts
+
+**Note on QoS 2 and application-level guarantees:**
+QoS 2 guarantees exactly-once *delivery* at the protocol level — the broker will not send duplicate messages
+to the client's receive loop. However, if the application crashes after receiving a message but before completing
+processing, the broker considers the message delivered. Applications requiring exactly-once *processing* should
+implement idempotent message handlers (e.g. deduplication by message content or correlation ID).
 
 
 ```ruby
@@ -402,7 +409,7 @@ will also stop retrying and raise {MQTT::SessionNotPresent}.
 
 #### `on_birth` Event Handler ####
 
-TL;DR: All persistent subscriptions that are expected to survive reconnection should be established with asynchronous
+All persistent subscriptions that are expected to survive reconnection should be established with asynchronous
 processing from the `on_birth` event handler. Do not block in this handler.
 
 For QoS0SessionStore every re-connection establishes a new Session. At disconnect active subscriptions are cancelled,
@@ -441,9 +448,29 @@ end
 
 #### Subscription Identifiers ####
 
-**WARNING**:  Clients must ensure there are no overlapping subscriptions for the same topic filter using different
-identifiers.  TODO: Feature to abstract this away (client code should enable identifiers, but the library should
-managed them)
+Subscription Identifiers provide more efficient matching of incoming PUBLISH messages to registered Subscriptions,
+offloading the bulk of the matching logic to the broker.
+
+Identifiers are automatically allocated by default for all subscriptions for a V5 Client, if the broker
+indicates it supports them.
+
+This behaviour can be disabled entirely or on a per-subscription basis.  Explicit allocation is also available where
+required - eg to ensure the same identifier is used when restarting a persistent session. 
+
+When subscriptions with and without identifiers overlap, brokers differ in how they deliver messages.
+Mosquitto sends separate `PUBLISH` messages per identifier match, while HiveMQ sends a single message
+with all matching identifiers.  The `subscription_identifiers_strict` connection option controls which
+behaviour the client expects:
+
+```ruby
+# Mosquitto-style brokers (default for localhost mosquitto)
+client = MQTT.open('mqtt://localhost?subscription_identifiers_strict=Y')
+
+# HiveMQ-style brokers (single PUBLISH with all ids)
+client = MQTT.open('mqtt://broker.hivemq.com')
+```
+
+See {MQTT::V5::Client#subscribe}, {MQTT::V5::Client::MessageRouter::SubscriptionIds}
 
 #### Topic Aliases ####
 
@@ -467,7 +494,7 @@ Topics filter expressions in the form of `$share/<group>/<topic filter>` will re
 were subscribed to `<topic filter>`.  Where multiple clients are subscribed in this way the broker will chose
 one of them to receive the message.
 
-#### V5 Request / Response
+#### Request / Response
 
 Request/Response is a remote procedure call mechanism over MQTT. 
 

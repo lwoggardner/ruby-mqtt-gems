@@ -15,30 +15,13 @@ module MQTT
 
         # Initialise recovery of the persistent session.
         # @!method qos2_recover
-        # @raise SessionNotRecoverable if there are unhandled QOS2 messages not explicitly marked to retry
-        # @return [Array<Integer>] list of QOS 2 packets ids waiting for PUBREL
+        # @return [Array<Integer>] list of QOS 2 packet ids waiting for PUBREL
 
-        # Load the unhandled QoS 1 and 2 PUBLISH packets that should be re-delivered for this session
-        # @!method qos_unhandled_packets(&deserializer)
-        # @return [Hash<Packet,String>] map of deserialized packets to their unique session id
+        # Mark a QoS2 packet id as pending (received, awaiting PUBREL)
+        # @!method qos2_pending(packet_id)
 
-        # Persist a received QoS 1/2 packet
-        # @!method store_qos_received(packet, unique_id)
-
-        # Check if a QoS2 PUBLISH packet has previously been received
-        # @!method qos2_published?(packet_id)
-        #  @param [Integer] packet_id
-        #  @return [Boolean] true if this packet_id was already received but is still waiting for PUBREL.
-
-        # Release a received packet id (before we send PUBCOMP)
+        # Release a received QoS2 packet id (before we send PUBCOMP)
         # @!method qos2_release(packet_id)
-
-        # Mark the received packet as handled from the client application perspective
-        # @!method qos_handled(packet, unique_id)
-
-        # Mark a previously received QOS1/2 packet as handled
-        # @!method qos_handled(packet, unique_id)
-        #   @return [void]
       end
     end
   end

@@ -61,13 +61,8 @@ module MQTT
         #   @return [self, ConcurrentMonitor::Task...]
         #     self and the task iterating over the messages.
 
-        # @!macro [new] qos_note
-        #   @note QoS 1/2 packets are marked as completely handled in the session store when the given block completes.
-        #     If no block is given, completion is marked *before* the packet is returned.
-
         # Get one packet, blocking until available
         #
-        # @!macro qos_note
         # @!macro yield_packets(Object)
         # @return [Packet] a `PUBLISH` packet when no block given
         # @return [Object] the block result when block given
@@ -78,7 +73,6 @@ module MQTT
 
         # Get one message, blocking until available
         #
-        # @!macro qos_note
         # @!macro yield_messages(Object)
         # @return [String, String, Hash<Symbol>] topic, payload, and attributes when no block given
         # @return [Object] the block result when block given

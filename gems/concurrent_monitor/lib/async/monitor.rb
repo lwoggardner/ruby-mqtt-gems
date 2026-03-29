@@ -12,10 +12,14 @@ module Async
     class Task < ConcurrentMonitor::Task
       def initialize(name_arg = nil, name: name_arg, report_on_exception: true, &block)
         super()
-        Async(annotation: name, finished: report_on_exception ? nil : false) do |task|
-          @task = task
-          Fiber.current.concurrent_monitor_task = self
-          block.call(self)
+        if block_given?
+          Async(annotation: name, finished: report_on_exception ? nil : false) do |task|
+            @task = task
+            Fiber.current.concurrent_monitor_task = self
+            block.call(self)
+          end
+        else
+          @task = Async::Task.current
         end
       end
 
@@ -61,7 +65,7 @@ module Async
       end
 
       def current_task
-        Fiber.current.concurrent_monitor_task
+        Fiber.current.concurrent_monitor_task ||= Task.new
       end
 
       def new_monitor

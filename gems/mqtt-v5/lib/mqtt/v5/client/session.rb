@@ -6,6 +6,7 @@ require_relative '../packet'
 module MQTT
   module V5
     class Client < MQTT::Core::Client
+      # @!visibility private
       # Client Session specialisation for MQTT 5.0
       class Session < MQTT::Core::Client::Session
         attr_reader :response_base

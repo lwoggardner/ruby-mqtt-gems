@@ -24,6 +24,7 @@ module URI
     def to_io(*local_args, connect_timeout: nil, resolv_timeout: connect_timeout, tcp_nodelay: true)
       TCPSocket.new(host, port, *local_args, connect_timeout:, resolv_timeout:).tap do |socket|
         socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1) if tcp_nodelay
+        socket.timeout = connect_timeout if connect_timeout
       end
     end
   end
@@ -45,7 +46,6 @@ module URI
     # @return [OpenSSL::SSL::SSLSocket]
     def to_io(*local_args, ssl_context:, connect_timeout: nil, **tcp_args)
       tcp = super(*local_args, connect_timeout:, **tcp_args)
-      tcp.timeout = connect_timeout if connect_timeout
       OpenSSL::SSL::SSLSocket.new(tcp, ssl_context).tap do |ssl_socket|
         ssl_socket.sync_close = true
         ssl_socket.hostname = host # For SNI validation if requested

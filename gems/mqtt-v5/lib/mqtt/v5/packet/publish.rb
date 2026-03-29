@@ -150,6 +150,10 @@ module MQTT
           super
           raise ArgumentError, 'Response topic cannot contain wildcards' if response_topic&.match?(/[#+]/)
         end
+
+        def to_s
+          "#{super}, topic: #{topic_name}, ids: #{subscription_identifiers}"
+        end
       end
     end
   end

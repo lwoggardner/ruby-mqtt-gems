@@ -65,14 +65,17 @@ module MQTT
     #        - Otherwise, a {Core::Client::RetryStrategy} is constructed with default settings
     #   @option client_opts [Integer] keep_alive (60)
     #     Duration in seconds between PING packets sent to the broker to keep the connection alive.
-    #   @option client_opts [Hash<Symbol>] **topic_alias options to build a {V5::TopicAlias::Manager} (V5 only)
+    #   @option client_opts [Hash] **topic_alias options to build a {V5::TopicAlias::Manager} (V5 only)
     #
     #     - `topic_aliases` TopicAlias::Manager instance, Class, or factory. (default {V5::TopicAlias::Manager})
     #     - `policy` TopicAlias::Policy instance, Class, or factory. (default {V5::TopicAlias::LRUPolicy})
     #     - `send_maximum` Integer maximum number of topic aliases to send to the broker.
     #           Default is the broker limit if a policy is set, otherwise 0, effectively disabling outgoing topic
     #           aliases.
-    #
+    #   @option client_opts [Boolean] subscription_identifiers false to disable the use of Subscription Identifiers
+    #    (V5 only)
+    #   @option client_opts [Hash] subscription_identifiers_.*  options to manage allocation of subscription
+    #     identifiers. (See {V5::Client::MessageRouter::SubscriptionIds#initialize})
     #   @option client_opts [Hash<Symbol>] **connect other CONNECT packet options
     #   @yield [client] Yields the configured client for use within the block
     #   @yieldparam client [Core::Client] the MQTT client instance {V5::Client} or {V3::Client}
@@ -209,14 +212,19 @@ module MQTT
         protocol_version, client_opts, open_opts,
         :topic_aliases, :topic_alias_maximum, prefix: 'topic_alias_'
       ) { |**ta_opts| topic_alias_opts(**ta_opts) }
+
+      v5_opts(
+        protocol_version, client_opts, open_opts,
+        :subscription_identifiers, prefix: 'subscription_identifiers_'
+      ) { |**si_opts| subscription_identifier_opts(**si_opts) }
     end
 
     def v5_opts(protocol_version, client_opts, open_opts, *slice_keys, prefix: nil, &block)
+      v5_opts = slice_opts!(client_opts, *slice_keys, prefix:)
       if protocol_version == 5
-        v5_opts = slice_opts!(client_opts, *slice_keys, prefix:)
         open_opts.merge!(block.call(**v5_opts))
       else
-        MQTT::Logger.log.warn "Ignoring #{prefix}* options for protocol version #{protocol_version}"
+        MQTT::Logger.log.warn "Ignoring #{slice_keys},#{prefix}* options for protocol version #{protocol_version}"
       end
     end
 
@@ -232,6 +240,16 @@ module MQTT
       topic_aliases = construct(topic_aliases, policy:, send_maximum:, **)
 
       { topic_aliases: topic_aliases, topic_alias_maximum: }.compact
+    end
+
+    def subscription_identifier_opts(subscription_ids: true, allocator: nil, strict: false, **id_opts)
+      return { subscription_ids: nil } unless subscription_ids
+
+      strict = coerce_boolean(subscription_identifiers_strict: strict)
+
+      within = V5::Client::MessageRouter::SubscriptionIds::FULL_RANGE
+      id_opts = { allocator: construct(allocator, within:, **id_opts) } if allocator
+      { subscription_ids: V5::Client::MessageRouter::SubscriptionIds.new(strict:, **id_opts) }
     end
   end
 end
