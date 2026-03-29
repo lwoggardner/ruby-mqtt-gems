@@ -611,7 +611,7 @@ module MQTT
       def connected!(conn, connect_pkt, connack_pkt)
         session.connected!(connect_pkt, connack_pkt)
         handle_event(:connect, connect_pkt, connack_pkt)
-        send_queue.push(*session.retry_packets)
+        send_queue.push(*session.retry_packets { |io| deserialize(io) })
         @connection = conn
         @status = :connected
         conn_cond.broadcast

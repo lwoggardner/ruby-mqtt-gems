@@ -75,7 +75,7 @@ module MQTT
         end
 
         def retry_packets(&)
-          @client_dir.glob('pkt.*').sort_by(&:mtime).map { |f| f.open('r', &) }
+          pkt_dir.glob('*.mqtt').sort_by(&:mtime).map { |f| f.open('r', &) }
         end
 
         def packet_file(id)
