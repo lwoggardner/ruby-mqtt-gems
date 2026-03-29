@@ -28,6 +28,20 @@ class AgentReporter < Minitest::Reporters::DefaultReporter
   end
 end
 
+# CSV reporter for test duration analysis
+# Usage: MINITEST_REPORTER=CsvReporter bundle exec rake test
+class CsvReporter < Minitest::Reporters::DefaultReporter
+  def on_report
+    csv_path = ENV.fetch('TEST_CSV', 'test_times.csv')
+    File.open(csv_path, 'w') do |f|
+      f.puts 'duration,suite,name'
+      tests.sort_by { |t| -t.time }.each { |t| f.puts "#{t.time.round(4)},#{t.class_name},#{t.name}" }
+    end
+    $stderr.puts "Test times written to #{csv_path}"
+    super
+  end
+end
+
 Minitest::Reporters.use! unless ENV.include?('RM_INFO') || Minitest::Reporters.reporters&.any?
 
 require 'mqtt/core'
@@ -98,17 +112,19 @@ module MQTT
 
       def with_brokers(&block)
         unix_socket = File.expand_path('fixture/mosquitto/mqtt.sock', __dir__)
+        remote = ENV.fetch('TEST_REMOTE_BROKERS', '')
         [
-          { uri: 'mqtt://broker.hivemq.com', sys_topic: nil, skip: true },
-          { uri: 'mqtt://localhost?subscription_identifiers_strict=Y', sys_topic: '$SYS/broker/version', skip: false },
-          { uri: "unix://#{unix_socket}?subscription_identifiers_strict=Y", sys_topic: '$SYS/broker/version', skip: !File.exist?(unix_socket) },
-          { uri: 'mqtt://test.mosquitto.org?subscription_identifiers_strict=Y', sys_topic: '$SYS/broker/version', skip: true }
+          { uri: 'mqtt://broker.hivemq.com', sys_topic: nil, skip: !remote.match?(/hive/i), timing: 3.0 },
+          { uri: 'mqtt://localhost?subscription_identifiers_strict=Y', sys_topic: '$SYS/broker/version', skip: false, timing: 1.0 },
+          { uri: "unix://#{unix_socket}?subscription_identifiers_strict=Y", sys_topic: '$SYS/broker/version', skip: !File.exist?(unix_socket), timing: 1.0 },
+          { uri: 'mqtt://test.mosquitto.org?subscription_identifiers_strict=Y', sys_topic: '$SYS/broker/version', skip: !remote.match?(/mosq/i), timing: 3.0 }
         ].reject { |opts| opts[:skip] }
-          .kw_each do |uri:, sys_topic:, **|
+          .kw_each do |uri:, sys_topic:, timing:, **|
           # Rubymine is confused by '.' characters
           describe "for #{uri.tr('.', "\u00b7")}" do
             let(:uri) { uri }
             let(:sys_topic) { sys_topic }
+            let(:timing_factor) { timing }
             instance_eval(&block)
           end
         end
@@ -144,12 +160,9 @@ module MQTT
 end
 
 def with_client(**opts, &)
-  MQTT.open(uri, **client_class_opts, **opts, &)
+  MQTT.open(uri, **client_class_opts, connect_timeout: 10, **opts, &)
 rescue MQTT::ConnectionError => e
-  if e.cause
-    puts "Rescued: #{e.class.name}: #{e.message}. Raising cause"
-    raise e.cause
-  end
+  raise e.cause if e.cause
 
   raise
 end

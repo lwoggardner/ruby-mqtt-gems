@@ -22,14 +22,15 @@ module MQTT
         end
 
         it 'stays alive if nothing is sent' do
-          client_class_opts[:keep_alive] = 2
+          ka = (1 * timing_factor).ceil
+          client_class_opts[:keep_alive] = ka
           with_client do |client|
             ping_send = 0
             ping_recv = 0
             client.on_send { |pkt| ping_send += 1 if pkt&.packet_name == :pingreq }
             client.on_receive { |pkt| ping_recv += 1 if pkt&.packet_name == :pingresp }
-            expect(client.keep_alive).must_equal(2)
-            sleep 5
+            expect(client.keep_alive).must_equal(ka)
+            sleep ka * 2.5
             expect(client.status).must_equal(:connected)
             expect(ping_recv).must_be :>, 0
             expect(ping_send).must_be :>, 0
@@ -37,24 +38,23 @@ module MQTT
         end
 
         it 'stays alive when publishing only qos0 messages' do
-          client_class_opts[:keep_alive] = 2
+          ka = (1 * timing_factor).ceil
+          client_class_opts[:keep_alive] = ka
           with_client do |client|
             ping_send = 0
             ping_recv = 0
             client.on_send { |pkt| ping_send += 1 if pkt&.packet_name == :pingreq }
             client.on_receive { |pkt| ping_recv += 1 if pkt&.packet_name == :pingresp }
 
-            # Publish QoS 0 messages every 1 second for 5 seconds
-            6.times do
+            # Publish QoS 0 messages for ~2.5 keep-alive cycles
+            (ka * 5).times do
               client.publish('ruby_mqtt5/test', 'qos0 message')
               sleep 0.5
             end
 
-            # Should have sent PINGREQ despite regular QoS 0 publishing
             expect(client.status).must_equal(:connected)
             expect(ping_send).must_be :>, 0
             expect(ping_recv).must_be :>, 0
-
           end
         end
 

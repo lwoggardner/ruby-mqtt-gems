@@ -8,8 +8,9 @@ module MQTT
       spec.class_eval do
         describe 'reconnections' do
           it 'reconnects after network error' do
+            ka = (1 * timing_factor).ceil
             reconnect_count = 0
-            MQTT.open(uri, **client_class_opts, keep_alive: 1.0) do |client|
+            MQTT.open(uri, **client_class_opts, keep_alive: ka) do |client|
               client.on_disconnect do |_count, &raiser|
                 raiser.call
               rescue StandardError
@@ -21,7 +22,7 @@ module MQTT
               end
 
               client.connect
-              sleep 4.0
+              sleep ka * 3
               _(reconnect_count).must_be :>=, 1
             end
           end

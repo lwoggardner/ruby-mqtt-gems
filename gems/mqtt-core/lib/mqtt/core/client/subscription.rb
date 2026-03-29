@@ -8,7 +8,7 @@ module MQTT
       # @!attribute [r] errors
       #   @return [Hash<String,ReasonCode|ResultCode] Map of topic_filter to failure code
       def initialize(failed_filters)
-        msg = ["#{self::NAME} failed for #{failed_filters.size} topics"] +
+        msg = ["#{self.class::NAME} failed for #{failed_filters.size} topics"] +
               failed_filters.map { |topic_filter, status| "#{topic_filter}(#{status})" }
         super(msg.join("\n\t"))
       end

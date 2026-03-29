@@ -176,24 +176,24 @@ module MQTT
                 
                 server_client.connect(request_response_information: true)
                 
-                # Set up responder that takes too long
+                expiry = (1 * timing_factor).ceil
+                # Set up responder that takes longer than expiry
                 server_client.response('test/slow') do |topic, payload|
-                  sleep 2  # Process longer than expiry
+                  sleep expiry * 3
                   'too late'
                 end
                 
                 with_client(session_store: server_client.class.memory_store) do |client|
                   client.connect(request_response_information: true)
                   
-                  # Send request with 1 second expiry
                   begin
-                    client.request('test/slow', 'data', message_expiry_interval: 1)
+                    client.request('test/slow', 'data', message_expiry_interval: expiry)
                   rescue MQTT::Error
                     # Expected to timeout
                   end
                   
                   # Wait for processing to complete
-                  sleep 2.5
+                  sleep expiry * 4
                   
                   _(response_publishes).must_be_empty
                 end
