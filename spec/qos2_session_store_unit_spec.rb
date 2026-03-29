@@ -61,6 +61,19 @@ describe 'QoS 2 Session Store Methods' do
       filesystem_store.connected!
       filesystem_store.qos2_release(999) # should not raise
     end
+
+    it 'survives simulated restart: pending ids recovered by new store instance' do
+      filesystem_store.connected!
+      filesystem_store.qos2_pending(0x10)
+      filesystem_store.qos2_pending(0x20)
+      filesystem_store.qos2_release(0x10)
+
+      # Simulate restart: new store instance pointing at same directory
+      restarted = filesystem_store.restart_clone
+      restarted.connected!
+      recovered = restarted.qos2_recover
+      _(recovered).must_equal([0x20])
+    end
   end
 
   describe 'Qos0SessionStore' do

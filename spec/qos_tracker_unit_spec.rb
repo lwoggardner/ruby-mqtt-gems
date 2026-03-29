@@ -64,11 +64,28 @@ describe 'QoSTracker' do
       tracker.qos2_release(555)
       _(tracker.qos2_published?(555)).must_equal(false)
     end
+
+    it 'recovers pending ids across restart and still deduplicates' do
+      tracker.qos2_published?(0x0A)
+      tracker.qos2_published?(0x0B)
+      tracker.qos2_release(0x0A)
+
+      # Simulate restart with same store directory
+      restarted_store = session_store.restart_clone
+      restarted_store.connected!
+      restarted = tracker_class.new(restarted_store)
+
+      # 0x0B was pending (not released), should be recovered as duplicate
+      _(restarted.qos2_published?(0x0B)).must_equal(true)
+      # 0x0A was released, should be seen as new
+      _(restarted.qos2_published?(0x0A)).must_equal(false)
+    end
   end
 
   describe 'birth phase buffering' do
     let(:packet1) { MQTT::V5::Packet::Publish.new(topic_name: 'test/a', payload: 'a', qos: 1, packet_identifier: 100) }
     let(:packet2) { MQTT::V5::Packet::Publish.new(topic_name: 'test/b', payload: 'b', qos: 2, packet_identifier: 200) }
+    let(:packet3) { MQTT::V5::Packet::Publish.new(topic_name: 'other/c', payload: 'c', qos: 0) }
 
     it 'buffers packets before birth complete' do
       tracker.birth_buffer(packet1)
@@ -101,6 +118,46 @@ describe 'QoSTracker' do
       _(tracker.birth_complete?).must_equal(false)
       tracker.birth_complete!
       _(tracker.birth_complete?).must_equal(true)
+    end
+
+    it 'replays only matching packets to subscription via topic filter' do
+      tracker.birth_buffer(packet1)  # test/a
+      tracker.birth_buffer(packet2)  # test/b
+      tracker.birth_buffer(packet3)  # other/c
+
+      # Simulate what Client#qos_subscription does: filter by topic match
+      replayed = []
+      filters = ['test/#']
+      tracker.qos_subscribed do |p|
+        replayed << p if MQTT::Core::Client::Subscription::Filters.match_topic?(p.topic_name, filters)
+      end
+
+      _(replayed).must_equal([packet1, packet2])
+    end
+
+    it 'replays same packet to multiple subscriptions with different filters' do
+      tracker.birth_buffer(packet1)  # test/a
+
+      replayed_broad = []
+      replayed_exact = []
+
+      tracker.qos_subscribed do |p|
+        replayed_broad << p if MQTT::Core::Client::Subscription::Filters.match_topic?(p.topic_name, ['#'])
+      end
+      tracker.qos_subscribed do |p|
+        replayed_exact << p if MQTT::Core::Client::Subscription::Filters.match_topic?(p.topic_name, ['test/a'])
+      end
+
+      _(replayed_broad).must_equal([packet1])
+      _(replayed_exact).must_equal([packet1])
+    end
+
+    it 'buffers QoS 0 packets during birth phase' do
+      tracker.birth_buffer(packet3)  # qos: 0
+
+      replayed = []
+      tracker.qos_subscribed { |p| replayed << p }
+      _(replayed).must_equal([packet3])
     end
   end
 end

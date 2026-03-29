@@ -156,6 +156,65 @@ module MQTT
           end
         end
 
+        describe 'overlapping subscriptions' do
+          it 'routes to both subscriptions with overlapping wildcard filters' do
+            sub_broad = make_sub
+            sub_narrow = make_sub
+            router.register(subscription: sub_broad, subscribe: MockSubscribe.new(filters: ['sensor/#']))
+            router.register(subscription: sub_narrow, subscribe: MockSubscribe.new(filters: ['sensor/+/temp']))
+
+            result = router.route(MockPublish.new(topic_name: 'sensor/room1/temp'))
+            _(result).must_include sub_broad
+            _(result).must_include sub_narrow
+            _(result.size).must_equal 2
+          end
+
+          it 'unsubscribe of narrow filter does not affect broad subscription' do
+            sub_broad = make_sub
+            sub_narrow = make_sub
+            router.register(subscription: sub_broad, subscribe: MockSubscribe.new(filters: ['sensor/#']))
+            router.register(subscription: sub_narrow, subscribe: MockSubscribe.new(filters: ['sensor/+/temp']))
+
+            router.deregister(subscription: sub_narrow)
+
+            result = router.route(MockPublish.new(topic_name: 'sensor/room1/temp'))
+            _(result).must_equal [sub_broad]
+          end
+
+          it 'routes correctly when one sub has exact and other has wildcard for same topic' do
+            sub_exact = make_sub
+            sub_wild = make_sub
+            router.register(subscription: sub_exact, subscribe: MockSubscribe.new(filters: ['device/status']))
+            router.register(subscription: sub_wild, subscribe: MockSubscribe.new(filters: ['device/#']))
+
+            result = router.route(MockPublish.new(topic_name: 'device/status'))
+            _(result).must_include sub_exact
+            _(result).must_include sub_wild
+            _(result.size).must_equal 2
+
+            # Only wildcard sub gets non-exact match
+            result2 = router.route(MockPublish.new(topic_name: 'device/config'))
+            _(result2).must_equal [sub_wild]
+          end
+
+          it 'shared filter between subs prevents unsubscribe until both deregister' do
+            sub1 = make_sub
+            sub2 = make_sub
+            router.register(subscription: sub1, subscribe: MockSubscribe.new(filters: ['data/#', 'control/#']))
+            router.register(subscription: sub2, subscribe: MockSubscribe.new(filters: ['data/#']))
+
+            # Deregister sub1 — data/# still used by sub2
+            inactive = router.deregister(subscription: sub1)
+            _(inactive).must_include 'control/#'
+            _(inactive).wont_include 'data/#'
+
+            # sub2 still receives data messages
+            _(router.route(MockPublish.new(topic_name: 'data/x'))).must_equal [sub2]
+            # control messages no longer routed
+            _(router.route(MockPublish.new(topic_name: 'control/x'))).must_be_empty
+          end
+        end
+
         describe '#clear' do
           it 'returns all subscriptions and resets' do
             sub1 = make_sub

@@ -3,6 +3,7 @@
 ## Test Framework
 - Uses **Minitest**
 - Run tests: `bundle exec rake test` or individual files with `bundle exec ruby spec/file_spec.rb`
+- Multiple files: `bundle exec ruby -r ./spec/file1.rb -r ./spec/file2.rb -e 'Minitest.run'`
 - Sequential tests: `bundle exec rake test:sequential test` — disables parallelization, useful when debugging hangs
 - Debug logging: `DEBUG=1 bundle exec ruby spec/file_spec.rb` — for individual tests only, before adding puts statements
 - Filter skipped tests from output: pipe through `sed '/^Skipped:/,/^$/d'`
