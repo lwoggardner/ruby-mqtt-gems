@@ -213,7 +213,8 @@ namespace :version do
   desc 'Create pre-release tag from current branch (optional suffix: rake version:tag_prerelease[rc1])'
   task :tag_prerelease, [:suffix] do |_t, args|
     require_relative 'gem_helper'
-    GemHelper.create_and_display_tag(version_files: VERSION_FILES, main_branch: 'main', prerelease: true, suffix: args[:suffix])
+    GemHelper.create_and_display_tag(version_files: VERSION_FILES, main_branch: 'main', prerelease: true,
+                                     suffix: args[:suffix])
   end
 
   desc 'Bump minor version for both gems'
