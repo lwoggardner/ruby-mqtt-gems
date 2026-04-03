@@ -41,7 +41,13 @@ jobs:
         gem push *.gem
         cd ../..
         
-        # Release mqtt-v3 and mqtt-v5 (both depend on mqtt-core)
+        # Release json_rpc_kit (no internal dependencies)
+        cd gems/json_rpc_kit
+        gem build json_rpc_kit.gemspec
+        gem push *.gem
+        cd ../..
+        
+        # Release mqtt-v3 and mqtt-v5 (both depend on mqtt-core, mqtt-v5 also depends on json_rpc_kit)
         cd gems/mqtt-v3
         gem build mqtt-v3.gemspec
         gem push *.gem

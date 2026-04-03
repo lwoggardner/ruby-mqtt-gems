@@ -187,6 +187,7 @@ task test: ['test:all']
 VERSION_FILES = %w[
   gems/mqtt-core/lib/mqtt/version.rb
   gems/concurrent_monitor/lib/concurrent_monitor/version.rb
+  gems/json_rpc_kit/lib/json_rpc_kit/version.rb
 ].freeze
 
 namespace :version do
