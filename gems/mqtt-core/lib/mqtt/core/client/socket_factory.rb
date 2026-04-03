@@ -101,7 +101,6 @@ module MQTT
         end
 
         # @!visibility private
-        # rubocop:disable Metrics/AbcSize
         def initialize(*io_args, ignore_uri_params: false, **opts)
           extract_io_args(io_args, opts)
 
@@ -112,7 +111,7 @@ module MQTT
 
           @uri.require_deps
 
-          opts.merge!(URI.decode_www_form(@uri.query || '').to_h.transform_keys(&:to_sym)) unless ignore_uri_params
+          merge_uri_params!(opts) unless ignore_uri_params
           @uri.query = nil
 
           @io_opts = slice_opts!(opts, :connect_timeout, :resolv_timeout, :tcp_nodelay) do |k, v|
@@ -125,8 +124,6 @@ module MQTT
           # Remaining unused opts
           @query_params = opts.freeze
         end
-        # rubocop:enable Metrics/AbcSize
-
         # @return [URI] The URI that will be used for the next connection.
         attr_reader :uri
         alias sanitized_uri uri
@@ -152,6 +149,10 @@ module MQTT
         end
 
         private
+
+        def merge_uri_params!(opts)
+          opts.merge!(URI.decode_www_form(@uri.query || '').to_h { |k, v| [k.to_sym, v == '' ? true : v] })
+        end
 
         def default_scheme(io_params)
           return io_params.delete(:scheme) if io_params.key?(:scheme)

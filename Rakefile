@@ -27,6 +27,11 @@ YARD::Rake::YardocTask.new do |t|
   t.options = ['--fail-on-warning']
 end
 
+desc 'Check YARD documentation without generating output'
+YARD::Rake::YardocTask.new('yard:check') do |t|
+  t.options = ['--fail-on-warning', '--no-output']
+end
+
 desc 'Run YARD server for live documentation'
 task :yard_server do
   sh 'bundle exec yard server --reload'
@@ -236,4 +241,7 @@ namespace :version do
   end
 end
 
-task default: %i[rubocop yard test:use_spec_reporter test:with_broker]
+desc 'Run lint checks (rubocop + yard warnings)'
+task lint: %i[rubocop yard:check]
+
+task default: %i[lint test:use_spec_reporter test:with_broker]
