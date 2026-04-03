@@ -10,6 +10,10 @@
   - e.g. `bundle exec rake test:sequential test 2>&1 | sed '/^Skipped:/,/^$/d'`
   - Skipped tests are expected and should not consume tokens in AI context
 
+### Linting
+- `rake lint` — runs rubocop + yard:check (no doc generation)
+- `rake yard` — generates full YARD documentation
+
 ## Project Structure
 - Multi-gem repository (monorepo)
 - Gems:
@@ -24,3 +28,30 @@
 - Supports both threaded and async (fiber-based) execution models
 - Immutable packet structures
 - LSP support enabled for code navigation
+
+## Release Process
+
+### Version Management
+- All gem versions are kept in sync via `VERSION_FILES` in the Rakefile
+  - `gems/mqtt-core/lib/mqtt/version.rb` (shared by mqtt-core, mqtt-v3, mqtt-v5)
+  - `gems/concurrent_monitor/lib/concurrent_monitor/version.rb`
+  - `gems/json_rpc_kit/lib/json_rpc_kit/version.rb`
+- `rake version:show` — display current versions and branch
+- `rake version:bump_minor` — bump minor version across all gems
+
+### Pre-release
+- Work on a release branch (e.g. `release/0.9`)
+- `rake version:tag_prerelease[rc1]` — creates tag `v{VERSION}.rc1`
+- Without suffix argument, falls back to branch-name-derived suffix
+- Push branch and tag: `git push && git push --tags`
+
+### Final Release
+- Merge release branch to `main`
+- `rake version:tag` — creates tag `v{VERSION}` (must be on `main`)
+- Push: `git push && git push --tags`
+
+### CI/CD
+- Tag pushes matching `v[0-9]+.[0-9]+.[0-9]+*` trigger the release workflow
+- The `release` GitHub environment requires manual approval before gems are published
+- Release order (dependency chain): concurrent_monitor → mqtt-core → json_rpc_kit → mqtt-v3 → mqtt-v5
+- The release workflow does not use bundler — it runs `gem build` + `gem push` directly

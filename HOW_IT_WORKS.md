@@ -42,6 +42,14 @@ The Session implements MQTT protocol requirements that are abstracted away from 
 
 The Session manages the multi-packet exchanges required by QoS 1 and QoS 2. See the MQTT specifications for protocol details. The Session only manages the protocol-level `SUBSCRIBE`/`UNSUBSCRIBE` packet flows and their acknowledgements.
 
+### Birth-Phase Buffering
+
+When reconnecting to an existing session (eg via {MQTT::Core::Client::FilesystemSessionStore}), the broker
+may send queued messages immediately after `CONNACK`, before the `on_birth` handler has finished
+re-establishing subscriptions. The Session buffers all received `PUBLISH` packets during the birth phase
+and replays matching packets to each subscription as it is registered. The buffer is cleared when
+`on_birth` completes.
+
 ### Session Persistence and clean_session/clean_start
 
 The MQTT protocol distinguishes between the network Connection and the logical Session. The `clean_session` (MQTT 3.1.1) or `clean_start` (MQTT 5.0) flag in `CONNECT` and the `session_present` flag in `CONNACK` coordinate whether client and broker agree on resuming existing session state.
@@ -86,8 +94,14 @@ The SessionStore determines what QoS guarantees can be met:
 
 The SessionStore provides:
 - `client_id` and `expiry_interval` for `CONNECT` packet
-- Storage/retrieval of unacknowledged packets
+- Storage/retrieval of unacknowledged outbound packets for retry on reconnect
+- QoS 2 inbound deduplication state (packet IDs awaiting PUBREL)
 - `clean_session`/`clean_start` flag determination
+
+QoS 2 guarantees exactly-once *delivery* at the protocol level — the broker will not send duplicate
+messages to the client's receive loop. The library does not attempt to track application-level
+message handling. Applications requiring exactly-once *processing* should implement idempotent
+message handlers.
 
 ## Connection: Network I/O
 
@@ -158,7 +172,10 @@ client.subscribe('topic/#').async { |topic, payload| process(topic, payload) }
 - Explicit control over concurrency via `#async` or manual task creation
 - Subscription lifecycle tied to the Enumerable object
 
-The Client tracks active {MQTT::Core::Client::Subscription} objects and routes received `PUBLISH` packets to matching subscriptions by topic filter.
+The Client tracks active {MQTT::Core::Client::Subscription} objects and routes received `PUBLISH` packets
+to matching subscriptions via {MQTT::Core::Client::MessageRouter}. The MessageRouter uses a
+{MQTT::Core::Client::MessageRouter::Trie Trie} (prefix tree) for efficient wildcard topic matching,
+and for MQTT 5.0 clients, can route by subscription identifier when supported by the broker.
 
 ### Concurrent Tasks
 

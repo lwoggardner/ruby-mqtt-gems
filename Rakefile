@@ -27,6 +27,11 @@ YARD::Rake::YardocTask.new do |t|
   t.options = ['--fail-on-warning']
 end
 
+desc 'Check YARD documentation without generating output'
+YARD::Rake::YardocTask.new('yard:check') do |t|
+  t.options = ['--fail-on-warning', '--no-output']
+end
+
 desc 'Run YARD server for live documentation'
 task :yard_server do
   sh 'bundle exec yard server --reload'
@@ -187,6 +192,7 @@ task test: ['test:all']
 VERSION_FILES = %w[
   gems/mqtt-core/lib/mqtt/version.rb
   gems/concurrent_monitor/lib/concurrent_monitor/version.rb
+  gems/json_rpc_kit/lib/json_rpc_kit/version.rb
 ].freeze
 
 namespace :version do
@@ -209,10 +215,11 @@ namespace :version do
     GemHelper.create_and_display_tag(version_files: VERSION_FILES, main_branch: 'main', prerelease: false)
   end
 
-  desc 'Create pre-release tag from current branch'
-  task :tag_prerelease do
+  desc 'Create pre-release tag from current branch (optional suffix: rake version:tag_prerelease[rc1])'
+  task :tag_prerelease, [:suffix] do |_t, args|
     require_relative 'gem_helper'
-    GemHelper.create_and_display_tag(version_files: VERSION_FILES, main_branch: 'main', prerelease: true)
+    GemHelper.create_and_display_tag(version_files: VERSION_FILES, main_branch: 'main', prerelease: true,
+                                     suffix: args[:suffix])
   end
 
   desc 'Bump minor version for both gems'
@@ -234,4 +241,7 @@ namespace :version do
   end
 end
 
-task default: %i[rubocop yard test:use_spec_reporter test:with_broker]
+desc 'Run lint checks (rubocop + yard warnings)'
+task lint: %i[rubocop yard:check]
+
+task default: %i[lint test:use_spec_reporter test:with_broker]

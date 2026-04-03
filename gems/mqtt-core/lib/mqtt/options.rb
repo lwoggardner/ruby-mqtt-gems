@@ -17,8 +17,22 @@ module MQTT
       s = opts.slice(*keys)
       opts.replace(opts.except(*keys)) if keys.any?
 
-      opts.delete_if { |k, v| k.start_with?(prefix) && (s[k.to_s.delete_prefix(prefix).to_sym] = v || true) } if prefix
-      opts.delete_if { |k, v| (m = pattern.match(k)) && (s[m[1].to_sym] = v || true) } if pattern
+      if prefix
+        opts.delete_if do |k, v|
+          next false unless k.start_with?(prefix)
+
+          s[k.to_s.delete_prefix(prefix).to_sym] = v
+          true
+        end
+      end
+      if pattern
+        opts.delete_if do |k, v|
+          next false unless (m = pattern.match(k))
+
+          s[m[1].to_sym] = v
+          true
+        end
+      end
 
       return s unless block_given?
 
