@@ -29,6 +29,14 @@
 - Immutable packet structures
 - LSP support enabled for code navigation
 
+## Gemfile.lock
+- Gemfile.lock is checked in to pin external dependency versions (rubocop, minitest, etc.)
+- Local gem versions in the PATH section are derived dynamically from the git branch/tag name
+- Do NOT commit Gemfile.lock changes that only affect PATH gem versions (the first ~13 lines)
+- Only commit Gemfile.lock when external dependencies are intentionally updated
+- Before committing, check `git diff Gemfile.lock` — if only PATH specs changed, run `git checkout -- Gemfile.lock`
+- The CI build workflow uses `frozen false` so it tolerates PATH version mismatches
+
 ## Release Process
 
 ### Version Management
