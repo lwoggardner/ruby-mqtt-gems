@@ -63,15 +63,15 @@ class GemHelper
       raise "Version mismatch: #{files.zip(versions).map { |f, v| "#{f}=#{v}" }.join(', ')}"
     end
 
-    def create_tag(version:, main_branch:, prerelease: false)
+    def create_tag(version:, main_branch:, prerelease: false, suffix: nil)
       branch = current_branch
       raise 'Working directory has uncommitted changes' unless working_directory_clean?
 
       if prerelease
         raise "Use release tag from main branch (currently on: #{branch})" if branch == main_branch
 
-        branch_suffix = branch.tr('/_-', '.')
-        tag = "v#{version}.#{branch_suffix}"
+        suffix ||= branch.tr('/_-', '.')
+        tag = "v#{version}.#{suffix}"
         message = "Pre-release #{tag}"
       else
         raise "Release tags must be from main branch (currently on: #{branch})" unless branch == main_branch
@@ -86,9 +86,9 @@ class GemHelper
       tag
     end
 
-    def create_and_display_tag(version_files:, main_branch:, prerelease:)
+    def create_and_display_tag(version_files:, main_branch:, prerelease:, suffix: nil)
       version = verify_versions_match(*version_files)
-      tag = create_tag(version: version, main_branch: main_branch, prerelease: prerelease)
+      tag = create_tag(version: version, main_branch: main_branch, prerelease: prerelease, suffix: suffix)
 
       puts "✓ Created #{prerelease ? 'pre-release' : 'release'} tag: #{tag}"
       puts 'Push with: git push && git push --tags'
